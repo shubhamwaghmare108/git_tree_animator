@@ -12,6 +12,7 @@ from ui.file_display import render_staging_area, render_working_tree, render_rep
 from ui.quiz import get_quizzes, run_quiz_scenario
 from ui.command_challenges import get_command_challenges, check_command
 from ui.missions import get_missions, command_matches, mission_status
+from ui.recovery import get_recovery_labs, capture_recovery_target, recovery_status
 
 
 # Page configuration
@@ -631,6 +632,65 @@ if missions:
             st.session_state.mission_index += 1
             st.session_state.mission_step = 0
             st.session_state.mission_repo = GitRepository()
+            st.rerun()
+
+# ============================================================================
+# UNDO / MISTAKE RECOVERY MODE
+# ============================================================================
+
+st.markdown('---')
+st.markdown('### 🛟 Undo / Mistake Recovery Mode')
+st.caption("A deliberate Git mistake has already happened. Recover the repository using Git's inspection and recovery tools.")
+
+recovery_level = st.selectbox('Recovery level', ['All', 'Beginner', 'Intermediate'], key='recovery_level')
+recovery_labs = get_recovery_labs(recovery_level)
+if 'recovery_index' not in st.session_state: st.session_state.recovery_index = 0
+if 'recovery_repo' not in st.session_state: st.session_state.recovery_repo = GitRepository()
+if 'recovery_target' not in st.session_state: st.session_state.recovery_target = None
+
+if recovery_labs:
+    recovery_lab = recovery_labs[st.session_state.recovery_index % len(recovery_labs)]
+    if not st.session_state.recovery_repo.history:
+        for setup_command in recovery_lab['setup']:
+            st.session_state.recovery_repo.execute_command(setup_command)
+        st.session_state.recovery_target = capture_recovery_target(recovery_lab, st.session_state.recovery_repo)
+        st.session_state.recovery_repo.execute_command(recovery_lab['mistake'])
+    target = st.session_state.recovery_target or {}
+    st.markdown(f"**{recovery_lab['level']} · {recovery_lab['title']}**")
+    st.write(recovery_lab['brief'])
+    st.warning(f"⚠️ Mistake injected: `{recovery_lab['mistake']}`")
+    st.info(f"Recovery hint: {recovery_lab['hint']}")
+    recovery_command = st.text_input('Recovery command', placeholder='git reflog', key=f"recovery_cmd_{st.session_state.recovery_index}")
+    r1, r2 = st.columns(2)
+    with r1:
+        if st.button('▶ Execute recovery command', key=f"recovery_exec_{st.session_state.recovery_index}", use_container_width=True):
+            normalized = recovery_command.strip()
+            if not normalized.startswith('git '): normalized = 'git ' + normalized
+            if normalized.strip() == 'git':
+                st.error('Enter a Git command.')
+            else:
+                success, output, _ = st.session_state.recovery_repo.execute_command(normalized)
+                if success:
+                    st.success(output)
+                    st.rerun()
+                else: st.error(output)
+    with r2:
+        if st.button('↩ Reset recovery lab', key=f"recovery_reset_{st.session_state.recovery_index}", use_container_width=True):
+            st.session_state.recovery_repo = GitRepository()
+            st.session_state.recovery_target = None
+            st.rerun()
+    status = recovery_status(recovery_lab, st.session_state.recovery_repo, target)
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric('HEAD', status['head'][:7] if status['head'] else 'None')
+    with c2: st.metric('Branch', status['branch'] or 'Detached')
+    with c3: st.metric('Reflog entries', status['reflog_entries'])
+    if status['complete']:
+        st.success(f"🏁 Recovery complete — {recovery_lab['success']}")
+        st.plotly_chart(render_git_graph(st.session_state.recovery_repo.state), use_container_width=True)
+        if st.button('Next recovery lab', key=f"next_recovery_{st.session_state.recovery_index}"):
+            st.session_state.recovery_index += 1
+            st.session_state.recovery_repo = GitRepository()
+            st.session_state.recovery_target = None
             st.rerun()
 
 # ============================================================================
