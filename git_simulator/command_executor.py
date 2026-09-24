@@ -131,7 +131,31 @@ class GitCommandExecutor:
             return state.stashes[index]
         raise GitCommandError("Usage: git stash apply [stash@{n}]")
 
+    def _stash_paths(self, stash: StashEntry) -> set:
+        return (
+            set(stash.modified_files)
+            | set(stash.new_files)
+            | set(stash.deleted_files)
+            | set(stash.staged_content)
+            | set(stash.staged_deletions)
+        )
+
+    def _working_change_paths(self, state: GitState) -> set:
+        return (
+            set(state.working_tree.modified_files)
+            | set(state.working_tree.new_files)
+            | set(state.working_tree.deleted_files)
+            | set(state.index.staged_files)
+            | set(state.index.staged_deletions)
+        )
+
     def _apply_stash(self, stash: StashEntry, state: GitState) -> GitState:
+        overlap = self._stash_paths(stash) & self._working_change_paths(state)
+        if overlap:
+            names = ", ".join(sorted(overlap))
+            raise GitCommandError(
+                f"Cannot apply {stash.name}: local changes would be overwritten: {names}"
+            )
         new_state = state.copy()
         for filename, content in stash.modified_files.items():
             new_state.working_tree.modified_files[filename] = content
