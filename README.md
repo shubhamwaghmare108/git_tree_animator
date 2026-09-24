@@ -512,3 +512,4 @@ The Streamlit app provides a dedicated simulated filesystem editor. Learners can
 ### State-validated missions
 
 Mission completion is now based on the actual simulated repository state, not simply on whether the learner entered the expected command strings. Missions can validate branches, tags, stashes, working-tree files, and other repository properties after the workflow is completed.
+\n\n### Undo / Mistake Recovery Mode\n\nRecovery Mode deliberately breaks a simulated repository and asks the learner to restore the intended state. The learner can inspect the repository with commands such as git status and git reflog, then recover using normal Git commands.\n\nCurrent labs include:\n\n- Recovering a commit after an accidental git reset --hard HEAD~1 using the reflog.\n- Recovering from detached HEAD by returning to the existing branch.\n\nCompletion is validated from the simulator's repository state rather than by requiring one exact command sequence.\n
