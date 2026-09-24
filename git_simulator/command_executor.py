@@ -1381,6 +1381,8 @@ class GitCommandExecutor:
         
         if state.head_is_detached:
             raise GitCommandError("Cannot merge: HEAD is detached")
+        if state.index.staged_files or state.index.staged_content or state.index.staged_deletions or state.working_tree.has_changes():
+            raise GitCommandError("Cannot merge with local changes; commit or stash them first")
         
         merge_branch = args[0]
         
