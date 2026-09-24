@@ -445,25 +445,6 @@ class GitCommandExecutor:
         ))
         return new_state, "\n".join(lines) or "Everything up-to-date"
 
-    def _is_ancestor(self, ancestor_sha: Optional[str], descendant_sha: Optional[str], state: GitState) -> bool:
-        if not ancestor_sha:
-            return True
-        if not descendant_sha:
-            return False
-        stack = [descendant_sha]
-        seen = set()
-        while stack:
-            sha = stack.pop()
-            if sha in seen:
-                continue
-            seen.add(sha)
-            if sha == ancestor_sha:
-                return True
-            commit = state.commits.get(sha)
-            if commit:
-                stack.extend(commit.parents)
-        return False
-
     def cmd_pull(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
         """git pull <remote> [branch] - Fetch and fast-forward the current branch."""
         if len(args) not in (1, 2):
