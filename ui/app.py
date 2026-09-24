@@ -13,7 +13,7 @@ from ui.quiz import get_quizzes, run_quiz_scenario
 from ui.command_challenges import get_command_challenges, check_command
 from ui.missions import get_missions, command_matches, mission_status
 from ui.recovery import get_recovery_labs, capture_recovery_target, recovery_status
-from ui.animation_timeline import build_timeline
+from ui.animation_timeline import build_timeline, state_at_step, state_diff
 
 
 # Page configuration
@@ -147,57 +147,102 @@ if st.session_state.lesson_commands:
         status = "✓" if i <= len(st.session_state.repo.history) else "○"
         st.code(f"{status} {cmd}")
 
+# ============================================================================
+# HISTORY / TIMELINE VIEW
+# ============================================================================
+
+timeline = build_timeline(st.session_state.repo.history)
+selected_step = len(timeline) if timeline else 0
+scrubbed_state = st.session_state.repo.state
+
+if timeline:
+    st.markdown("---")
+    st.markdown("### 🎬 Timeline State Scrubber")
+    st.caption(
+        "Move through command history to inspect the exact repository snapshot at that point. "
+        "Scrubbing never changes the live repository."
+    )
+    selected_step = st.slider(
+        "Repository state",
+        0,
+        len(timeline),
+        len(timeline),
+        key="timeline_step",
+        format="Step %d",
+    )
+    if selected_step == 0:
+        st.info("Initial repository state — no commands have been executed yet.")
+    else:
+        event = timeline[selected_step - 1]
+        st.code(f"Step {event.step}: {event.command}")
+        st.info(event.summary)
+
+    scrubbed_state = state_at_step(st.session_state.repo.history, selected_step)
+
+    t1, t2, t3, t4 = st.columns(4)
+    with t1:
+        st.metric("Commits", len(scrubbed_state.commits))
+    with t2:
+        head_sha = scrubbed_state.get_head_commit_sha()
+        st.metric("HEAD", head_sha[:7] if head_sha else "None")
+    with t3:
+        branch = None if scrubbed_state.head_is_detached else scrubbed_state.head
+        st.metric("Branch", branch or "Detached")
+    with t4:
+        st.metric(
+            "Working changes",
+            len(scrubbed_state.working_tree.modified_files)
+            + len(scrubbed_state.working_tree.new_files)
+            + len(scrubbed_state.working_tree.deleted_files),
+        )
+
+    if selected_step > 0:
+        event = timeline[selected_step - 1]
+        previous_state = state_at_step(st.session_state.repo.history, selected_step - 1)
+        diff = state_diff(previous_state, scrubbed_state)
+        changes = []
+        if diff["branches_added"] or diff["branches_removed"]:
+            changes.append(
+                f"branches +{len(diff['branches_added'])}/-{len(diff['branches_removed'])}"
+            )
+        if diff["tags_added"] or diff["tags_removed"]:
+            changes.append(
+                f"tags +{len(diff['tags_added'])}/-{len(diff['tags_removed'])}"
+            )
+        if diff["files_added"] or diff["files_removed"]:
+            changes.append(
+                f"committed files +{len(diff['files_added'])}/-{len(diff['files_removed'])}"
+            )
+        st.caption("Visible delta: " + (", ".join(changes) if changes else "no reference/tree additions"))
+
 # Main layout: Graph + State
 col_graph, col_state = st.columns([2.5, 1.5])
 
 with col_graph:
     st.markdown("### 📊 Commit Graph")
-    if st.session_state.repo.history:
-        history_states = [state for _, state in st.session_state.repo.history]
-        fig = render_git_animation(history_states, animation_speed)
+    if timeline:
+        fig = render_git_graph(scrubbed_state)
+    elif st.session_state.repo.history:
+        fig = render_git_animation(
+            [state for _, state in st.session_state.repo.history],
+            animation_speed,
+        )
     else:
         fig = render_git_graph(st.session_state.repo.state)
     st.plotly_chart(fig, use_container_width=True, key="git_graph")
 
-# ============================================================================
-# SEMANTIC ANIMATION TIMELINE
-# ============================================================================
-
-st.markdown('---')
-st.markdown('### 🎬 Semantic Animation Timeline')
-st.caption('Each Git command is translated into a learner-friendly state transition, so the animation explains what changed rather than only moving nodes.')
-timeline = build_timeline(st.session_state.repo.history)
-if timeline:
-    timeline_step = st.slider('Timeline step', 1, len(timeline), len(timeline), key='timeline_step')
-    event = timeline[timeline_step - 1]
-    st.code(f'Step {event.step}: {event.command}')
-    st.info(event.summary)
-    t1, t2, t3, t4 = st.columns(4)
-    with t1: st.metric('Commits', f'{event.commits_before} → {event.commits_after}')
-    with t2:
-        before_head = (event.head_before or 'None')[:7]
-        after_head = (event.head_after or 'None')[:7]
-        st.metric('HEAD', f'{before_head} → {after_head}')
-    with t3: st.metric('Working changes', f'{event.working_changes_before} → {event.working_changes_after}')
-    with t4: st.metric('Staged paths', f'{event.staged_before} → {event.staged_after}')
-    before_branch = event.branch_before or 'Detached'
-    after_branch = event.branch_after or 'Detached'
-    st.caption(f'Branch: {before_branch} → {after_branch}')
-else:
-    st.caption('Run Git commands to build the semantic timeline.')
-
 with col_state:
     st.markdown("### 📋 Repository State")
-    render_repository_state(st.session_state.repo.state)
+    render_repository_state(scrubbed_state)
     
     st.markdown("#### Current Commit")
-    render_commit_details(st.session_state.repo.state)
+    render_commit_details(scrubbed_state)
     
     st.markdown("#### Staging Area")
-    render_staging_area(st.session_state.repo.state.index)
+    render_staging_area(scrubbed_state.index)
     
     st.markdown("#### Working Directory")
-    render_working_tree(st.session_state.repo.state.working_tree)
+    render_working_tree(scrubbed_state.working_tree)
 
 # ============================================================================
 # SIMULATED WORKING TREE EDITOR
