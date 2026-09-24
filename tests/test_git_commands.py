@@ -1485,3 +1485,57 @@ def test_add_stages_requested_deletion_only():
     assert success, message
     assert state.index.staged_deletions == {"a.txt"}
     assert state.working_tree.deleted_files == {"b.txt"}
+
+
+
+def test_restore_staged_multiple_files_unstages_all_requested_paths():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "a1")
+    repo.set_working_file("b.txt", "b1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+
+    repo.set_working_file("a.txt", "a2")
+    repo.set_working_file("b.txt", "b2")
+    repo.execute_command("git add .")
+
+    success, message, state = repo.execute_command("git restore --staged a.txt b.txt")
+
+    assert success, message
+    assert not state.index.staged_content
+    assert state.working_tree.modified_files["a.txt"] == "a2"
+    assert state.working_tree.modified_files["b.txt"] == "b2"
+
+
+def test_restore_multiple_files_only_discards_requested_worktree_changes():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "a1")
+    repo.set_working_file("b.txt", "b1")
+    repo.set_working_file("c.txt", "c1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+
+    repo.set_working_file("a.txt", "a2")
+    repo.set_working_file("b.txt", "b2")
+    repo.set_working_file("c.txt", "c2")
+
+    success, message, state = repo.execute_command("git restore a.txt b.txt")
+
+    assert success, message
+    assert "a.txt" not in state.working_tree.modified_files
+    assert "b.txt" not in state.working_tree.modified_files
+    assert state.working_tree.modified_files["c.txt"] == "c2"
+
+
+def test_restore_multiple_files_fails_for_missing_path():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "a1")
+
+    success, message, state = repo.execute_command("git restore a.txt missing.txt")
+
+    assert not success
+    assert "pathspec 'missing.txt' did not match any files" in message
+    assert state.working_tree.modified_files["a.txt"] == "a1"
