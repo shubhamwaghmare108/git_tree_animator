@@ -994,3 +994,14 @@ def test_tag_can_point_to_older_commit():
 
     assert success
     assert state.tags["release-1"].target_sha == first_sha
+
+
+def test_quiz_bank_has_valid_answers():
+    from ui.quiz import QUIZZES
+
+    assert QUIZZES
+    for quiz in QUIZZES:
+        assert quiz["level"] in {"Beginner", "Intermediate", "Advanced"}
+        assert 0 <= quiz["answer"] < len(quiz["options"])
+        assert quiz["question"]
+        assert quiz["explanation"]

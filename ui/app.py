@@ -9,6 +9,7 @@ from git_simulator.repository import GitRepository
 from git_simulator.state import WorkingTreeState
 from ui.graph_renderer import render_git_graph, render_git_animation
 from ui.file_display import render_staging_area, render_working_tree, render_repository_state, render_commit_details
+from ui.quiz import get_quizzes
 
 
 # Page configuration
@@ -447,6 +448,58 @@ if st.session_state.repo.state.merge_in_progress:
             success, message, _ = st.session_state.repo.execute_command("git merge --continue")
             st.error(message) if not success else st.success(message)
             st.rerun()
+
+# ============================================================================
+# INTERACTIVE GIT QUIZ
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🧠 Git Challenge")
+st.caption("Predict the result before looking at the answer. Score yourself and learn why.")
+
+quiz_level = st.selectbox(
+    "Challenge level",
+    ["All", "Beginner", "Intermediate", "Advanced"],
+    key="quiz_level",
+)
+quizzes = get_quizzes(quiz_level)
+if "quiz_score" not in st.session_state:
+    st.session_state.quiz_score = 0
+if "quiz_attempts" not in st.session_state:
+    st.session_state.quiz_attempts = 0
+
+if quizzes:
+    quiz = quizzes[st.session_state.quiz_attempts % len(quizzes)]
+    st.markdown(f"**{quiz['level']} · {quiz['title']}**")
+    st.write("**Scenario:**")
+    for step in quiz["setup"]:
+        st.code(step)
+    st.write(quiz["question"])
+    answer = st.radio(
+        "Choose one:",
+        quiz["options"],
+        key=f"quiz_answer_{st.session_state.quiz_attempts}_{quiz['id']}",
+    )
+    if st.button("Check answer", key=f"quiz_check_{st.session_state.quiz_attempts}_{quiz['id']}"):
+        selected = quiz["options"].index(answer)
+        st.session_state.quiz_attempts += 1
+        if selected == quiz["answer"]:
+            st.session_state.quiz_score += 1
+            st.success("✅ Correct!")
+        else:
+            st.error(f"❌ Not quite. The expected answer is: {quiz['options'][quiz['answer']]}")
+        st.info(quiz["explanation"])
+        st.rerun()
+
+    q_col1, q_col2 = st.columns(2)
+    with q_col1:
+        st.metric("Score", f"{st.session_state.quiz_score}")
+    with q_col2:
+        st.metric("Attempts", f"{st.session_state.quiz_attempts}")
+    if st.button("Reset quiz score", key="reset_quiz_score"):
+        st.session_state.quiz_score = 0
+        st.session_state.quiz_attempts = 0
+        st.rerun()
 
 # ============================================================================
 # COMMAND INPUT & EXECUTION
