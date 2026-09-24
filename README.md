@@ -246,7 +246,7 @@ This tool teaches:
 - [ ] Revert commits
 - [x] Rebase with animation and conflict workflow
 - [x] Cherry-pick with conflict resolution
-- [ ] Detached HEAD visualization
+- [x] Detached HEAD visualization and recovery
 - [ ] Remote repository simulation
 - [ ] Push/pull/fetch animations
 - [x] Merge conflicts
@@ -414,3 +414,13 @@ git cherry-pick <commit-sha>
 When the patch conflicts, the operation pauses so the learner can edit the
 conflicted file, run `git add .`, and choose `git cherry-pick --continue`.
 The operation can also be cancelled with `git cherry-pick --abort`.
+
+
+## Detached HEAD visualization
+
+The simulator includes an educational `git detach <commit>` command that moves
+HEAD directly to a commit without moving any branch pointer. The UI highlights
+this state and provides a recovery control to switch back to an existing branch.
+
+The reflog records the detached transition, making it possible to teach the
+relationship between HEAD, branch references, and recoverable history.
