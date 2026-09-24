@@ -116,6 +116,13 @@ class GitState:
     merge_in_progress: bool = False
     merge_head_sha: Optional[str] = None
     conflict_files: Set[str] = field(default_factory=set)
+    # Rebase workflow state. Original commits remain in the object database;
+    # these fields describe the temporary replay operation.
+    rebase_in_progress: bool = False
+    rebase_original_head: Optional[str] = None
+    rebase_onto_sha: Optional[str] = None
+    rebase_pending_commits: List[str] = field(default_factory=list)
+    rebase_current_commit: Optional[str] = None
     
     def copy(self) -> "GitState":
         """Create a deep copy of state."""
@@ -140,6 +147,11 @@ class GitState:
             merge_in_progress=self.merge_in_progress,
             merge_head_sha=self.merge_head_sha,
             conflict_files=self.conflict_files.copy(),
+            rebase_in_progress=self.rebase_in_progress,
+            rebase_original_head=self.rebase_original_head,
+            rebase_onto_sha=self.rebase_onto_sha,
+            rebase_pending_commits=self.rebase_pending_commits.copy(),
+            rebase_current_commit=self.rebase_current_commit,
         )
     
     def get_head_commit_sha(self) -> Optional[str]:
