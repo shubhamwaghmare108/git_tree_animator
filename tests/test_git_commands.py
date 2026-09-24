@@ -1038,3 +1038,20 @@ def test_missions_have_valid_checkpoints():
             assert step["goal"]
             assert step["accepted"]
             assert step["hint"]
+
+
+def test_sandbox_file_edit_and_delete_update_working_tree():
+    from git_simulator.repository import GitRepository
+
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "print('hello')")
+    assert repo.state.working_tree.new_files["app.py"] == "print('hello')"
+
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Add app"')
+    repo.set_working_file("app.py", "print('updated')")
+    assert repo.state.working_tree.modified_files["app.py"] == "print('updated')"
+
+    repo.delete_working_file("app.py")
+    assert "app.py" in repo.state.working_tree.deleted_files
