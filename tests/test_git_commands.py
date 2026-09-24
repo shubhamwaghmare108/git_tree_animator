@@ -600,3 +600,89 @@ class TestMergeConflictWorkflow:
         assert not state.merge_in_progress
         assert not state.conflict_files
         assert not state.working_tree.has_changes()
+
+
+def test_rebase_replays_commits_with_new_parents(repo):
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("app.py", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature work'")
+    repo.execute_command("git switch main")
+    repo.set_working_file("readme.md", "main")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'main work'")
+
+    success, message, state = repo.execute_command("git switch feature")
+    assert success
+    success, message, state = repo.execute_command("git rebase main")
+    assert success
+    assert "Rebase finished" in message
+    assert not state.rebase_in_progress
+    assert state.branches["feature"].target_sha != state.branches["main"].target_sha
+    rebased = state.commits[state.branches["feature"].target_sha]
+    assert rebased.parents == [state.branches["main"].target_sha]
+    assert rebased.tree["app.py"] == "feature"
+    assert rebased.tree["readme.md"] == "main"
+
+
+def test_rebase_conflict_can_continue(repo):
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("app.py", "feature change")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature'")
+    repo.execute_command("git switch main")
+    repo.set_working_file("app.py", "main change")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'main'")
+    repo.execute_command("git switch feature")
+
+    success, message, state = repo.execute_command("git rebase main")
+    assert success
+    assert state.rebase_in_progress
+    assert state.conflict_files == {"app.py"}
+
+    repo.set_working_file("app.py", "resolved")
+    success, message, state = repo.execute_command("git add .")
+    assert success
+    assert not state.conflict_files
+
+    success, message, state = repo.execute_command("git rebase --continue")
+    assert success
+    assert not state.rebase_in_progress
+    tip = state.commits[state.branches["feature"].target_sha]
+    assert tip.tree["app.py"] == "resolved"
+    assert tip.parents == [state.commits[state.branches["main"].target_sha].sha]
+
+
+def test_rebase_abort_restores_original_tip(repo):
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("app.py", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature'")
+    original_tip = repo.state.branches["feature"].target_sha
+    repo.execute_command("git switch main")
+    repo.set_working_file("app.py", "main")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'main'")
+    repo.execute_command("git switch feature")
+
+    success, message, state = repo.execute_command("git rebase main")
+    assert success
+    assert state.rebase_in_progress
+
+    success, message, state = repo.execute_command("git rebase --abort")
+    assert success
+    assert not state.rebase_in_progress
+    assert state.branches["feature"].target_sha == original_tip
