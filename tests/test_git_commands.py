@@ -1236,3 +1236,21 @@ def test_three_way_merge_non_conflicting_and_conflicting_cases():
     assert state.merge_in_progress
     assert state.conflict_files == {"app.py"}
     assert "<<<<<<< current" in state.working_tree.modified_files["app.py"]
+
+
+
+def test_merge_ff_uses_shared_ancestor_helper():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'initial'")
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("a.txt", "two")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature'")
+    repo.execute_command("git switch main")
+
+    success, message, state = repo.execute_command("git merge feature")
+    assert success, message
+    assert state.branches["main"].target_sha == state.branches["feature"].target_sha
