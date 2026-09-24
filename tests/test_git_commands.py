@@ -1539,3 +1539,28 @@ def test_restore_multiple_files_fails_for_missing_path():
     assert not success
     assert "pathspec 'missing.txt' did not match any files" in message
     assert state.working_tree.modified_files["a.txt"] == "a1"
+
+
+
+def test_commit_allows_allow_empty_before_message_flag():
+    repo = GitRepository()
+    repo.execute_command("git init")
+
+    success, message, state = repo.execute_command('git commit --allow-empty -m "marker"')
+
+    assert success, message
+    assert len(state.commits) == 1
+    sha = state.branches["main"].target_sha
+    assert state.commits[sha].message == "marker"
+
+
+def test_commit_allows_allow_empty_after_message_flag():
+    repo = GitRepository()
+    repo.execute_command("git init")
+
+    success, message, state = repo.execute_command('git commit -m "marker" --allow-empty')
+
+    assert success, message
+    assert len(state.commits) == 1
+    sha = state.branches["main"].target_sha
+    assert state.commits[sha].message == "marker"
