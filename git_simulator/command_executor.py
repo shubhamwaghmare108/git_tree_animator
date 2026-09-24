@@ -1439,7 +1439,11 @@ class GitCommandExecutor:
         # Handle branch names
         if ref in state.branches:
             return state.branches[ref].target_sha
-        
+
+        # Handle tag names
+        if ref in state.tags:
+            return state.tags[ref].target_sha
+
         # Handle commit SHAs
         if ref in state.commits:
             return ref
