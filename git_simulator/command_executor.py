@@ -8,7 +8,7 @@ import shlex
 from typing import List, Optional, Tuple
 from datetime import datetime
 
-from .state import GitState, Commit, BranchPointer, TagPointer, ReflogEntry, WorkingTreeState, StashEntry
+from .state import GitState, IndexState, Commit, BranchPointer, TagPointer, ReflogEntry, WorkingTreeState, StashEntry
 from .errors import GitError, GitCommandError, GitRefNotFoundError
 
 
