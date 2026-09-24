@@ -486,7 +486,7 @@ class GitCommandExecutor:
         target_sha = remote_ptr.target_sha
         if current_sha == target_sha:
             return fetched, f"{fetch_msg}\nAlready up to date."
-        if not self._is_ancestor(current_sha, target_sha, fetched):
+        if not self._is_ancestor(current_sha, target_sha, fetched.commits):
             raise GitCommandError(
                 "fatal: branches have diverged; this educational pull only supports fast-forward"
             )
@@ -1466,6 +1466,7 @@ class GitCommandExecutor:
                     "\\n=======\\n" + incoming_text +
                     "\\n>>>>>>> incoming"
                 )
+                conflicts.append(filename)
 
             if merged is not missing:
                 result[filename] = merged
