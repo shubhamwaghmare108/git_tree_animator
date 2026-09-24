@@ -566,7 +566,11 @@ class GitCommandExecutor:
         return new_state, f"Merge committed as {merge_sha_new[:7]}"
 
     def cmd_merge(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
-        """git merge <branch> - Merge a branch."""
+        """git merge <branch>, --continue, or --abort."""
+        if args and args[0] == "--abort":
+            return self.cmd_merge_abort([], state)
+        if args and args[0] == "--continue":
+            return self.cmd_merge_continue([], state)
         if not args:
             raise GitCommandError("Usage: git merge <branch>")
         
