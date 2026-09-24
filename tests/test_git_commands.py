@@ -945,3 +945,52 @@ def test_stash_pop_restores_and_drops_latest_entry():
     assert success
     assert state.working_tree.modified_files["app.py"] == "v2"
     assert not state.stashes
+
+
+def test_lightweight_tag_points_to_current_commit_and_resolves():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    sha = repo.state.get_head_commit_sha()
+
+    success, message, state = repo.execute_command("git tag v1.0")
+
+    assert success
+    assert state.tags["v1.0"].target_sha == sha
+    assert state.tags["v1.0"].annotated is False
+    assert repo.executor._resolve_ref("v1.0", state) == sha
+
+
+def test_annotated_tag_and_delete():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+
+    success, message, state = repo.execute_command('git tag -a v1.0 -m "first release"')
+
+    assert success
+    assert state.tags["v1.0"].annotated
+    assert state.tags["v1.0"].message == "first release"
+
+    success, message, state = repo.execute_command("git tag -d v1.0")
+    assert success
+    assert "v1.0" not in state.tags
+
+
+def test_tag_can_point_to_older_commit():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "C1"')
+    first_sha = repo.state.get_head_commit_sha()
+    repo.execute_command('git commit -m "C2"')
+
+    success, message, state = repo.execute_command(f"git tag release-1 {first_sha}")
+
+    assert success
+    assert state.tags["release-1"].target_sha == first_sha
