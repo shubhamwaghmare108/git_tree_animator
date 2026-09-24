@@ -14,7 +14,7 @@ setup(
     description="Interactive Git visualization and simulation tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/git-tree-animator",
+    url="https://github.com/shubhamwaghmare108/git_tree_animator",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
