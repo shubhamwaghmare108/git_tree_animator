@@ -1272,3 +1272,51 @@ def test_reset_soft_preserves_combined_staged_and_unstaged_snapshot():
     assert state.branches["main"].target_sha == c1
     assert state.index.staged_content["app.py"] == "staged-and-edited"
     assert state.working_tree.new_files == {}
+
+
+class TestCurrentDebugRegressions:
+    """Regression coverage for remote pull and merge conflict detection."""
+
+    def test_pull_fast_forward_uses_commit_graph_mapping(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        repo.execute_command("git remote add origin https://example.com/demo.git")
+        repo.set_working_file("a.txt", "one")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "Initial"')
+        repo.execute_command("git push origin main")
+        initial_sha = repo.state.branches["main"].target_sha
+
+        repo.set_working_file("a.txt", "remote")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "Remote work"')
+        remote_sha = repo.state.branches["main"].target_sha
+        repo.state.remote_servers["origin"]["main"].target_sha = remote_sha
+        repo.state.branches["main"].target_sha = initial_sha
+
+        success, message, state = repo.execute_command("git pull origin main")
+
+        assert success, message
+        assert state.branches["main"].target_sha == remote_sha
+
+    def test_merge_detects_content_conflict(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        repo.set_working_file("shared.txt", "base")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "base"')
+        repo.execute_command("git switch -c feature")
+        repo.set_working_file("shared.txt", "feature")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "feature"')
+        repo.execute_command("git switch main")
+        repo.set_working_file("shared.txt", "main")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "main"')
+
+        success, message, state = repo.execute_command("git merge feature")
+
+        assert success, message
+        assert state.merge_in_progress
+        assert state.conflict_files == {"shared.txt"}
+        assert "<<<<<<< current" in state.working_tree.modified_files["shared.txt"]
