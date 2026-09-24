@@ -1,7 +1,7 @@
 """Semantic command-to-state timeline helpers for Git visualization."""
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
 from git_simulator.state import GitState
 
@@ -89,7 +89,7 @@ def build_timeline(history: List[tuple]) -> List[TimelineEvent]:
 
 
 
-def state_at_step(history, step: int):
+def state_at_step(history: Sequence[Tuple[str, GitState]], step: int) -> GitState:
     """Return a copied historical state; step 0 is the initial empty state."""
     if step < 0 or step > len(history):
         raise ValueError(f"step must be between 0 and {len(history)}")
