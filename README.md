@@ -502,3 +502,8 @@ The app now includes command challenges where learners receive a repository scen
 ### Git Mission Mode
 
 Mission Mode combines multiple command challenges into a checkpoint-based task. Learners receive a real-world repository objective, execute one command at a time, receive hints on incorrect commands, and see the final repository graph after completing the mission.
+
+
+### Git Sandbox Workspace
+
+The Streamlit app provides a dedicated simulated filesystem editor. Learners can create, edit, and delete files without touching the host filesystem, then use normal Git commands to stage and commit those changes. The resulting file snapshots are visible in the repository state and commit graph.
