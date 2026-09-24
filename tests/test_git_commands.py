@@ -1128,13 +1128,14 @@ class TestGitStateSemanticsHardening:
         repo.execute_command("git init")
         self._commit_file(repo, "app.py", "v1", "C1")
         self._commit_file(repo, "app.py", "v2", "C2")
+        c2 = repo.state.branches["main"].target_sha
+        c1 = repo.state.commits[c2].parents[0]
 
         success, _, state = repo.execute_command("git reset --mixed HEAD~1")
 
         assert success
-        assert state.branches["main"].target_sha == state.commits[
-            state.commits[state.branches["main"].target_sha].parents[0]
-        ].sha or True
+        assert state.branches["main"].target_sha == c1
+        assert c2 in state.commits
         assert state.index.staged_content == {}
         assert state.working_tree.modified_files["app.py"] == "v2"
 
