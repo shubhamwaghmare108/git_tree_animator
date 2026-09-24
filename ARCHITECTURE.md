@@ -91,9 +91,11 @@ GitState        # Complete repository state snapshot
 
 **Key Properties:**
 
-- All are frozen dataclasses (snapshot-based)
-- Can be copied with `.copy()` method
-- Support introspection (`.short_sha`, `.has_changes()`, etc.)
+- Git objects such as commits and refs are immutable dataclasses.
+- Repository snapshots are deep-copied through `GitState.copy()`.
+- Index and working-tree state are explicit mutable delta models inside each snapshot.
+- Helper methods expose introspection such as `.short_sha` and `.has_changes()`.
+- The simulator maintains the invariant that staged paths are removed from the unstaged working-tree delta.
 
 ### `git_simulator/command_executor.py`
 
@@ -400,32 +402,11 @@ render_something(st.session_state.repo.state)
 
 ## Future Enhancements
 
-### Phase 2: History Visualization
-
-- Timeline view of state over time
-- Playable animated transitions between repository states
-- Slider to scrub through history
-
-### Phase 3: Advanced Operations
-
-- `git rebase` with visualization
-- `git cherry-pick`
-- `git stash`
-- Tags
-
-### Phase 4: Remote Simulation
-
-- Separate local/remote repos
-- `git push` / `git pull` / `git fetch`
-- Remote-tracking branches
-- Merge conflict visualization
-
-### Phase 5: Real Repository Mode
-
-- Connect to real `.git` directories
-- Parse actual Git objects
-- Show real commits
-- Maintain compatibility with CLI Git
+- Richer DAG layout for complex histories.
+- More semantic invariant tests and edge-case Git behavior.
+- Further modularization of the Streamlit UI.
+- Optional real-repository inspection mode.
+- Additional educational missions and visualizations.
 
 ## Deployment
 
