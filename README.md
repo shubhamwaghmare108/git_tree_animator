@@ -41,7 +41,14 @@ Rather than just showing a commit graph, Git Tree Animator animates the state tr
 - **Merging**
   - `git merge <branch>` - Merge branches
   - Fast-forward merge detection
-  - Three-way merge with merge commits
+  - Ancestor-aware three-way merge with merge commits
+  - Interactive conflict resolution with `git merge --continue` / `--abort`
+
+- **Rebase**
+  - `git rebase <branch>` - Replay current-branch commits onto another branch
+  - New commit snapshots and parent relationships for replayed commits
+  - Interactive conflict pause/resolution with `git rebase --continue`
+  - `git rebase --abort` restores the original branch tip
 
 - **Reset**
   - `git reset --soft HEAD~1` - Soft reset
@@ -237,12 +244,12 @@ This tool teaches:
 ## Phase 2+ Roadmap
 
 - [ ] Revert commits
-- [ ] Rebase with animation
+- [x] Rebase with animation and conflict workflow
 - [ ] Cherry-pick
 - [ ] Detached HEAD visualization
 - [ ] Remote repository simulation
 - [ ] Push/pull/fetch animations
-- [ ] Merge conflicts
+- [x] Merge conflicts
 - [ ] Stash
 - [ ] Tags
 - [ ] Interactive quizzes
@@ -366,3 +373,26 @@ Built for educational purposes. Learn Git by seeing exactly what it does! 🚀
 The simulator now keeps a simplified committed file tree on every commit. The UI includes a working-tree editor so learners can make a file change, run `git add .`, and then commit it. The graph can replay command-history states with Play/Pause controls and a step slider.
 
 The simulator also uses shell-style argument parsing for quoted commit messages and performs an ancestor-aware three-way merge. Files changed differently on both sides receive visible conflict markers.
+
+
+## Rebase visualization
+
+The simulator models rebase as a sequence of snapshot transformations. Original
+commits are retained, while replayed commits receive new deterministic SHAs and
+new parents. If a replay cannot be applied cleanly, the operation pauses and
+the UI exposes the conflicted files.
+
+Example:
+
+```
+git switch feature
+git rebase main
+# resolve conflicts if necessary
+git add .
+git rebase --continue
+# or:
+git rebase --abort
+```
+
+This is an educational model rather than a byte-for-byte implementation of
+Git's internal rebase machinery.
