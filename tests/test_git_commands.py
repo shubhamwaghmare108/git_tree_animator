@@ -1376,3 +1376,38 @@ def test_state_copy_preserves_existing_stashes():
     assert len(copied.stashes) == 1
     assert copied.stashes[0].name == "stash@{0}"
     assert copied.stashes[0].modified_files == {"app.py": "v2"}
+
+
+def test_restore_file_keeps_staged_snapshot_and_discards_worktree_edit():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+
+    repo.set_working_file("app.py", "v2")
+    repo.execute_command("git add .")
+    repo.set_working_file("app.py", "v3")
+
+    success, message, state = repo.execute_command("git restore app.py")
+
+    assert success, message
+    assert state.index.staged_content["app.py"] == "v2"
+    assert not state.working_tree.has_changes()
+
+
+def test_restore_file_clears_worktree_deletion_but_keeps_staged_deletion():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+    repo.delete_working_file("app.py")
+    repo.execute_command("git add .")
+    repo.delete_working_file("app.py")
+
+    success, message, state = repo.execute_command("git restore app.py")
+
+    assert success, message
+    assert "app.py" in state.index.staged_deletions
+    assert not state.working_tree.has_changes()
