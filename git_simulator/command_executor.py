@@ -229,6 +229,10 @@ class GitCommandExecutor:
                 new_state.working_tree.deleted_files.discard(filename)
                 staged_count += 1
 
+        # Staging a conflict resolution marks those paths resolved.
+        new_state.conflict_files.difference_update(
+            set(new_state.index.staged_files) | new_state.index.staged_deletions
+        )
         return new_state, f"Added {staged_count} files to index"
     
     def cmd_restore(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
