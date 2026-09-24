@@ -1190,3 +1190,49 @@ class TestGitStateSemanticsHardening:
         assert success
         assert "app.py" in state.index.staged_deletions
         assert not state.working_tree.deleted_files
+
+
+
+def test_three_way_merge_non_conflicting_and_conflicting_cases():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("app.py", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature'")
+
+    repo.execute_command("git switch main")
+    repo.set_working_file("main.txt", "main-only")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'main change'")
+
+    success, message, state = repo.execute_command("git merge feature")
+    assert success, message
+    assert not state.merge_in_progress
+    merge_sha = state.branches["main"].target_sha
+    assert state.commits[merge_sha].tree["app.py"] == "feature"
+    assert state.commits[merge_sha].tree["main.txt"] == "main-only"
+
+    conflict_repo = GitRepository()
+    conflict_repo.execute_command("git init")
+    conflict_repo.set_working_file("app.py", "base")
+    conflict_repo.execute_command("git add .")
+    conflict_repo.execute_command("git commit -m 'base'")
+    conflict_repo.execute_command("git switch -c feature")
+    conflict_repo.set_working_file("app.py", "feature")
+    conflict_repo.execute_command("git add .")
+    conflict_repo.execute_command("git commit -m 'feature'")
+    conflict_repo.execute_command("git switch main")
+    conflict_repo.set_working_file("app.py", "main")
+    conflict_repo.execute_command("git add .")
+    conflict_repo.execute_command("git commit -m 'main change'")
+
+    success, message, state = conflict_repo.execute_command("git merge feature")
+    assert success, message
+    assert state.merge_in_progress
+    assert state.conflict_files == {"app.py"}
+    assert "<<<<<<< current" in state.working_tree.modified_files["app.py"]
