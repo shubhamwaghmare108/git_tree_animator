@@ -245,7 +245,7 @@ This tool teaches:
 
 - [ ] Revert commits
 - [x] Rebase with animation and conflict workflow
-- [ ] Cherry-pick
+- [x] Cherry-pick with conflict resolution
 - [ ] Detached HEAD visualization
 - [ ] Remote repository simulation
 - [ ] Push/pull/fetch animations
@@ -396,3 +396,21 @@ git rebase --abort
 
 This is an educational model rather than a byte-for-byte implementation of
 Git's internal rebase machinery.
+
+
+## Cherry-pick visualization
+
+The simulator models cherry-pick as applying the selected commit's snapshot
+delta to the current branch. A successful operation creates a new commit with
+the current HEAD as its parent while preserving the source commit.
+
+Example:
+
+```
+git switch main
+git cherry-pick <commit-sha>
+```
+
+When the patch conflicts, the operation pauses so the learner can edit the
+conflicted file, run `git add .`, and choose `git cherry-pick --continue`.
+The operation can also be cancelled with `git cherry-pick --abort`.

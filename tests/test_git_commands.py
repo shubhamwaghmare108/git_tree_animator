@@ -689,3 +689,90 @@ def test_rebase_abort_restores_original_tip():
     assert success
     assert not state.rebase_in_progress
     assert state.branches["feature"].target_sha == original_tip
+
+
+def test_cherry_pick_creates_new_commit_with_same_snapshot():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("base.txt", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("feature.txt", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature commit'")
+    feature_sha = repo.state.branches["feature"].target_sha
+
+    repo.execute_command("git switch main")
+    success, message, state = repo.execute_command(f"git cherry-pick {feature_sha}")
+    assert success
+    assert "Cherry-pick created commit" in message
+    new_sha = state.branches["main"].target_sha
+    assert new_sha != feature_sha
+    assert state.commits[new_sha].parents == [state.commits[feature_sha].parents[0]]
+    assert state.commits[new_sha].tree["feature.txt"] == "feature"
+
+
+def test_cherry_pick_conflict_can_continue():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("app.py", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature'")
+    feature_sha = repo.state.branches["feature"].target_sha
+
+    repo.execute_command("git switch main")
+    repo.set_working_file("app.py", "main")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'main'")
+
+    success, message, state = repo.execute_command(f"git cherry-pick {feature_sha}")
+    assert success
+    assert state.cherry_pick_in_progress
+    assert state.conflict_files == {"app.py"}
+
+    repo.set_working_file("app.py", "resolved")
+    success, message, state = repo.execute_command("git add .")
+    assert success
+    assert not state.conflict_files
+
+    success, message, state = repo.execute_command("git cherry-pick --continue")
+    assert success
+    assert not state.cherry_pick_in_progress
+    tip = state.commits[state.branches["main"].target_sha]
+    assert tip.tree["app.py"] == "resolved"
+
+
+def test_cherry_pick_abort():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'base'")
+
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("app.py", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'feature'")
+    feature_sha = repo.state.branches["feature"].target_sha
+
+    repo.execute_command("git switch main")
+    repo.set_working_file("app.py", "main")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'main'")
+    original_tip = repo.state.branches["main"].target_sha
+
+    success, message, state = repo.execute_command(f"git cherry-pick {feature_sha}")
+    assert success
+    assert state.cherry_pick_in_progress
+
+    success, message, state = repo.execute_command("git cherry-pick --abort")
+    assert success
+    assert not state.cherry_pick_in_progress
+    assert state.branches["main"].target_sha == original_tip
