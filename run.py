@@ -8,5 +8,10 @@ Run with: python run.py
 import subprocess
 import sys
 
+def main():
+    """Launch the Streamlit application."""
+    return subprocess.call([sys.executable, "-m", "streamlit", "run", "ui/app.py"])
+
+
 if __name__ == "__main__":
-    subprocess.run([sys.executable, "-m", "streamlit", "run", "ui/app.py"])
+    raise SystemExit(main())
