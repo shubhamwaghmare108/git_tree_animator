@@ -492,3 +492,8 @@ repeat scenarios and build confidence before using the terminal.
 ### State-aware Git challenges
 
 Quiz scenarios now execute against a fresh GitRepository before the answer is revealed. After a prediction, learners can inspect the actual HEAD, branch pointers, commit graph, and command-by-command results. This turns the quiz from a static multiple-choice exercise into a simulator-backed prediction exercise.
+
+
+### Goal-oriented command challenges
+
+The app now includes command challenges where learners receive a repository scenario and a concrete Git goal, then type the command they believe will achieve it. The simulator executes the submitted command, reports success or failure, and reveals the expected command, explanation, and resulting graph.
