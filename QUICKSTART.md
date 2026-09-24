@@ -103,7 +103,7 @@ Make sure everything works:
 pytest tests/ -v
 ```
 
-You should see 50+ passing tests.
+You should see 80+ tests.
 
 ## 7. Learn More
 
