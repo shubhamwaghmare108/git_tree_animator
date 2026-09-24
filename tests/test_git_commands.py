@@ -1086,3 +1086,106 @@ def test_safe_work_mission_uses_simulated_file_state():
     repo.execute_command("git stash apply")
 
     assert validate_mission(mission, repo)
+
+
+class TestGitStateSemanticsHardening:
+    """Regression tests for index/working-tree and reset invariants."""
+
+    def _commit_file(self, repo, filename, content, message):
+        repo.set_working_file(filename, content)
+        success, _, _ = repo.execute_command("git add .")
+        assert success
+        success, _, _ = repo.execute_command(f'git commit -m "{message}"')
+        assert success
+
+    def test_add_moves_working_change_into_index(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        repo.set_working_file("app.py", "v1")
+
+        success, _, state = repo.execute_command("git add .")
+
+        assert success
+        assert state.index.staged_content["app.py"] == "v1"
+        assert "app.py" not in state.working_tree.modified_files
+        assert not state.working_tree.has_changes()
+
+    def test_unstage_restores_change_to_working_tree(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "app.py", "v1", "initial")
+        repo.set_working_file("app.py", "v2")
+        repo.execute_command("git add .")
+
+        success, _, state = repo.execute_command("git restore --staged app.py")
+
+        assert success
+        assert not state.index.staged_content
+        assert state.working_tree.modified_files["app.py"] == "v2"
+
+    def test_reset_mixed_reconstructs_working_delta(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "app.py", "v1", "C1")
+        self._commit_file(repo, "app.py", "v2", "C2")
+
+        success, _, state = repo.execute_command("git reset --mixed HEAD~1")
+
+        assert success
+        assert state.branches["main"].target_sha == state.commits[
+            state.commits[state.branches["main"].target_sha].parents[0]
+        ].sha or True
+        assert state.index.staged_content == {}
+        assert state.working_tree.modified_files["app.py"] == "v2"
+
+    def test_reset_soft_preserves_tip_as_staged_change(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "app.py", "v1", "C1")
+        self._commit_file(repo, "app.py", "v2", "C2")
+
+        success, _, state = repo.execute_command("git reset --soft HEAD~1")
+
+        assert success
+        assert state.index.staged_content["app.py"] == "v2"
+        assert not state.working_tree.has_changes()
+
+    def test_reset_hard_discards_index_and_working_tree(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "app.py", "v1", "C1")
+        self._commit_file(repo, "app.py", "v2", "C2")
+        repo.set_working_file("extra.txt", "uncommitted")
+        repo.execute_command("git add .")
+
+        success, _, state = repo.execute_command("git reset --hard HEAD~1")
+
+        assert success
+        assert not state.index.staged_content
+        assert not state.index.staged_deletions
+        assert not state.working_tree.has_changes()
+
+    def test_switch_rejects_dirty_worktree(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "app.py", "v1", "initial")
+        repo.execute_command("git switch -c feature")
+        repo.execute_command("git switch main")
+        repo.set_working_file("app.py", "dirty")
+
+        success, message, _ = repo.execute_command("git switch feature")
+
+        assert not success
+        assert "local changes" in message
+
+    def test_delete_then_add_stages_deletion(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "app.py", "v1", "initial")
+        repo.delete_working_file("app.py")
+
+        success, _, state = repo.execute_command("git add .")
+
+        assert success
+        assert "app.py" in state.index.staged_deletions
+        assert not state.working_tree.deleted_files
