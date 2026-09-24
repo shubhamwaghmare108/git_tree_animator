@@ -767,11 +767,17 @@ class GitCommandExecutor:
         branch_name = state.head if not state.head_is_detached else f"HEAD detached at {state.head[:7]}"
         lines.append(f"On branch {branch_name}")
         
-        if state.index.staged_files:
+        staged_paths = set(state.index.staged_files) | set(state.index.staged_deletions)
+        if staged_paths:
             lines.append("\nChanges to be committed:")
-            for filename in state.index.staged_files:
+            for filename in sorted(staged_paths):
                 lines.append(f"  (use \"git restore --staged <file>...\" to unstage)")
-                lines.append(f"  modified:   {filename}")
+                if filename in state.index.staged_deletions:
+                    lines.append(f"  deleted:    {filename}")
+                elif filename in self._head_tree(state):
+                    lines.append(f"  modified:   {filename}")
+                else:
+                    lines.append(f"  new file:   {filename}")
         
         if state.working_tree.has_changes():
             lines.append("\nChanges not staged for commit:")
@@ -907,11 +913,10 @@ class GitCommandExecutor:
         )
 
         if reset_mode == "--soft":
-            # HEAD moves; index and working tree remain the same snapshots.
-            new_state.index = self._tree_to_index(target_tree, old_head_tree)
-            new_state.working_tree = self._delta_to_working_tree(
-                old_head_tree, current_working_tree
-            )
+            # HEAD moves while preserving the full pre-reset index/working
+            # snapshot. Re-express that snapshot relative to the new HEAD.
+            new_state.index = self._tree_to_index(target_tree, current_working_tree)
+            new_state.working_tree = WorkingTreeState()
         elif reset_mode == "--mixed":
             # HEAD and index move to target; working files remain as-is.
             new_state.index = IndexState()

@@ -1236,3 +1236,39 @@ def test_three_way_merge_non_conflicting_and_conflicting_cases():
     assert state.merge_in_progress
     assert state.conflict_files == {"app.py"}
     assert "<<<<<<< current" in state.working_tree.modified_files["app.py"]
+
+
+
+def test_status_reports_staged_deletions():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'initial'")
+    repo.delete_working_file("app.py")
+    success, _, state = repo.execute_command("git add .")
+    assert success
+
+    _, status, _ = repo.execute_command("git status")
+    assert "Changes to be committed:" in status
+    assert "deleted:    app.py" in status
+    assert "working tree clean" in status
+
+
+def test_reset_soft_preserves_combined_staged_and_unstaged_snapshot():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'C1'")
+    repo.set_working_file("app.py", "staged")
+    repo.execute_command("git add .")
+    repo.set_working_file("notes.txt", "unstaged")
+    c1 = repo.state.get_head_commit_sha()
+    repo.set_working_file("app.py", "staged-and-edited")
+
+    success, _, state = repo.execute_command("git reset --soft " + c1)
+    assert success
+    assert state.branches["main"].target_sha == c1
+    assert state.index.staged_content["app.py"] == "staged-and-edited"
+    assert state.working_tree.new_files == {}
