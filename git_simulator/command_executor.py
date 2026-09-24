@@ -8,7 +8,7 @@ import shlex
 from typing import List, Optional, Tuple
 from datetime import datetime
 
-from .state import GitState, Commit, BranchPointer, ReflogEntry, WorkingTreeState
+from .state import GitState, Commit, BranchPointer, ReflogEntry, WorkingTreeState, StashEntry
 from .errors import GitError, GitCommandError, GitRefNotFoundError
 
 
@@ -57,6 +57,103 @@ class GitCommandExecutor:
         except Exception as e:
             raise GitCommandError(f"Error executing '{parts[0]}': {str(e)}")
     
+    # ========== Stash Commands ==========
+
+    def cmd_stash(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git stash [push] [-m message] - Save working tree and index changes."""
+        if not state.branches:
+            raise GitCommandError("Not a git repository")
+        if args and args[0] not in ("push",):
+            if args[0] == "list":
+                return state, self._format_stash_list(state)
+            raise GitCommandError("Usage: git stash [push] [-m \"message\"]")
+        if args and args[0] == "push":
+            args = args[1:]
+        message = "WIP on " + (state.head if not state.head_is_detached else state.head[:7])
+        if "-m" in args:
+            i = args.index("-m")
+            if i + 1 >= len(args):
+                raise GitCommandError("Stash message cannot be empty")
+            message = " ".join(args[i + 1:]).strip('"').strip("'")
+        if not state.working_tree.has_changes() and not state.index.staged_content and not state.index.staged_deletions:
+            raise GitCommandError("No local changes to save")
+        new_state = state.copy()
+        stash_id = len(new_state.stashes)
+        new_state.stashes.insert(0, StashEntry(
+            stash_id=stash_id,
+            message=message,
+            base_sha=state.get_head_commit_sha(),
+            modified_files=dict(state.working_tree.modified_files),
+            new_files=dict(state.working_tree.new_files),
+            deleted_files=set(state.working_tree.deleted_files),
+            staged_content=dict(state.index.staged_content),
+            staged_deletions=set(state.index.staged_deletions),
+        ))
+        new_state.working_tree = WorkingTreeState()
+        new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=state.get_head_commit_sha() or "", message=message))
+        return new_state, f"Saved working directory and index state as {new_state.stashes[0].name}"
+
+    def _format_stash_list(self, state: GitState) -> str:
+        if not state.stashes:
+            return ""
+        return "\n".join(f"{stash.name}: {stash.message}" for stash in state.stashes)
+
+    def _get_stash(self, args: List[str], state: GitState) -> StashEntry:
+        if not state.stashes:
+            raise GitCommandError("No stash entries found")
+        if not args:
+            return state.stashes[0]
+        token = args[0]
+        if token.startswith("stash@{") and token.endswith("}"):
+            try:
+                index = int(token[7:-1])
+            except ValueError:
+                raise GitCommandError(f"Invalid stash reference '{token}'")
+            if index < 0 or index >= len(state.stashes):
+                raise GitCommandError(f"stash entry '{token}' not found")
+            return state.stashes[index]
+        raise GitCommandError("Usage: git stash apply [stash@{n}]")
+
+    def _apply_stash(self, stash: StashEntry, state: GitState) -> GitState:
+        new_state = state.copy()
+        for filename, content in stash.modified_files.items():
+            new_state.working_tree.modified_files[filename] = content
+        for filename, content in stash.new_files.items():
+            new_state.working_tree.new_files[filename] = content
+        for filename in stash.deleted_files:
+            new_state.working_tree.deleted_files.add(filename)
+        for filename, content in stash.staged_content.items():
+            new_state.index.staged_files[filename] = self._hash_content(content)
+            new_state.index.staged_content[filename] = content
+        new_state.index.staged_deletions.update(stash.staged_deletions)
+        return new_state
+
+    def cmd_stash_list(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        return state, self._format_stash_list(state)
+
+    def cmd_stash_apply(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        stash = self._get_stash(args, state)
+        new_state = self._apply_stash(stash, state)
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=stash.base_sha or "", message=f"apply {stash.name}"))
+        return new_state, f"Applied {stash.name}"
+
+    def cmd_stash_pop(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        stash = self._get_stash(args, state)
+        new_state = self._apply_stash(stash, state)
+        new_state.stashes.pop(stash.stash_id)
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=stash.base_sha or "", message=f"pop {stash.name}"))
+        return new_state, f"Applied and dropped {stash.name}"
+
+    def cmd_stash_drop(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        stash = self._get_stash(args, state)
+        new_state = state.copy()
+        new_state.stashes.pop(stash.stash_id)
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=stash.base_sha or "", message=f"drop {stash.name}"))
+        return new_state, f"Dropped {stash.name}"
+
     # ========== Repository Commands ==========
     
     def cmd_init(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
