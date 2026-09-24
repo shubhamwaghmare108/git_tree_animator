@@ -57,6 +57,7 @@ class IndexState:
     
     staged_files: Dict[str, str] = field(default_factory=dict)  # filename -> hash
     staged_content: Dict[str, str] = field(default_factory=dict)  # filename -> content
+    staged_deletions: Set[str] = field(default_factory=set)  # filenames removed from the tree
     
     def __repr__(self) -> str:
         return f"Index({len(self.staged_files)} files)"
@@ -123,6 +124,7 @@ class GitState:
             index=IndexState(
                 staged_files=self.index.staged_files.copy(),
                 staged_content=self.index.staged_content.copy(),
+                staged_deletions=self.index.staged_deletions.copy(),
             ),
             working_tree=WorkingTreeState(
                 modified_files=self.working_tree.modified_files.copy(),

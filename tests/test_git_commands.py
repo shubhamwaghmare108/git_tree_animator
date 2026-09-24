@@ -463,3 +463,78 @@ class TestFileSnapshots:
         success, msg, state = repo.execute_command('git commit -m "quoted message with spaces"')
         assert success
         assert "quoted message with spaces" in msg
+
+
+class TestThreeWayMerge:
+    """Tests for ancestor-aware merge behavior."""
+
+    def _commit_file(self, repo, filename, content, message):
+        repo.set_working_file(filename, content)
+        repo.execute_command("git add .")
+        success, _, _ = repo.execute_command(f'git commit -m "{message}"')
+        assert success
+
+    def test_merge_uses_common_ancestor_for_non_conflicting_changes(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "shared.txt", "base", "base")
+
+        repo.execute_command("git switch -c feature")
+        self._commit_file(repo, "shared.txt", "feature", "feature change")
+
+        repo.execute_command("git switch main")
+        self._commit_file(repo, "main.txt", "main", "main change")
+
+        success, _, state = repo.execute_command("git merge feature")
+        assert success
+
+        head = state.get_head_commit_sha()
+        tree = state.commits[head].tree
+        assert tree["shared.txt"] == "feature"
+        assert tree["main.txt"] == "main"
+
+    def test_merge_marks_same_file_changed_on_both_sides_as_conflict(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "shared.txt", "base", "base")
+
+        repo.execute_command("git switch -c feature")
+        self._commit_file(repo, "shared.txt", "feature", "feature change")
+
+        repo.execute_command("git switch main")
+        self._commit_file(repo, "shared.txt", "main", "main change")
+
+        success, _, state = repo.execute_command("git merge feature")
+        assert success
+
+        head = state.get_head_commit_sha()
+        content = state.commits[head].tree["shared.txt"]
+        assert "<<<<<<< current" in content
+        assert "=======" in content
+        assert "main" in content
+        assert "feature" in content
+
+    def test_merge_allows_one_side_to_delete_unchanged_file(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "keep.txt", "base", "base")
+
+        repo.execute_command("git switch -c feature")
+        repo.execute_command("git switch main")
+        repo.set_working_file("other.txt", "main")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "main change"')
+
+        # Simulate a deletion by removing the file from the current working
+        # snapshot through the repository helper, then commit the deletion.
+        repo.state.working_tree.deleted_files.add("keep.txt")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "delete keep"')
+
+        repo.execute_command("git switch feature")
+        success, _, state = repo.execute_command("git merge main")
+        assert success
+
+        head = state.get_head_commit_sha()
+        assert "keep.txt" not in state.commits[head].tree
+        assert state.commits[head].tree["other.txt"] == "main"

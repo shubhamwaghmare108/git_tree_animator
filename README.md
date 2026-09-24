@@ -365,4 +365,4 @@ Built for educational purposes. Learn Git by seeing exactly what it does! 🚀
 
 The simulator now keeps a simplified committed file tree on every commit. The UI includes a working-tree editor so learners can make a file change, run `git add .`, and then commit it. The graph can replay command-history states with Play/Pause controls and a step slider.
 
-The simulator also uses shell-style argument parsing for quoted commit messages and produces visible conflict markers for files changed differently by both sides of a simulated merge.
+The simulator also uses shell-style argument parsing for quoted commit messages and performs an ancestor-aware three-way merge. Files changed differently on both sides receive visible conflict markers.
