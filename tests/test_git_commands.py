@@ -1455,3 +1455,33 @@ def test_commit_allows_explicit_empty_commit():
     assert state.branches["main"].target_sha is not None
     sha = state.branches["main"].target_sha
     assert state.commits[sha].tree == {}
+
+
+def test_add_stages_only_requested_file():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "a")
+    repo.set_working_file("b.txt", "b")
+
+    success, message, state = repo.execute_command("git add a.txt")
+
+    assert success, message
+    assert state.index.staged_content == {"a.txt": "a"}
+    assert state.working_tree.new_files == {"b.txt": "b"}
+
+
+def test_add_stages_requested_deletion_only():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "a")
+    repo.set_working_file("b.txt", "b")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+    repo.delete_working_file("a.txt")
+    repo.delete_working_file("b.txt")
+
+    success, message, state = repo.execute_command("git add a.txt")
+
+    assert success, message
+    assert state.index.staged_deletions == {"a.txt"}
+    assert state.working_tree.deleted_files == {"b.txt"}
