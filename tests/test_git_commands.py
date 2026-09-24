@@ -776,3 +776,57 @@ def test_cherry_pick_abort():
     assert success
     assert not state.cherry_pick_in_progress
     assert state.branches["main"].target_sha == original_tip
+
+
+def test_detach_head_and_recover_to_branch():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'one'")
+    repo.set_working_file("a.txt", "two")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'two'")
+    tip = repo.state.branches["main"].target_sha
+
+    success, message, state = repo.execute_command(f"git detach {tip}")
+    assert success
+    assert state.head_is_detached
+    assert state.head == tip
+    assert "detached" in message.lower()
+
+    success, message, state = repo.execute_command("git switch main")
+    assert success
+    assert not state.head_is_detached
+    assert state.head == "main"
+    assert state.branches["main"].target_sha == tip
+
+
+def test_detached_head_commit_does_not_move_branch():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'one'")
+    tip = repo.state.branches["main"].target_sha
+
+    repo.execute_command(f"git detach {tip}")
+    repo.set_working_file("detached.txt", "work")
+    repo.execute_command("git add .")
+    success, message, state = repo.execute_command("git commit -m 'detached work'")
+    assert not success
+    assert state.branches["main"].target_sha == tip
+
+
+def test_reflog_records_detached_head_transition():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command("git commit -m 'one'")
+    tip = repo.state.branches["main"].target_sha
+
+    repo.execute_command(f"git detach {tip}")
+    success, message, state = repo.execute_command("git reflog")
+    assert success
+    assert "detached HEAD" in message

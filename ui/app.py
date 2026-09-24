@@ -207,6 +207,34 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# DETACHED HEAD / RECOVERY
+# ============================================================================
+
+if st.session_state.repo.state.head_is_detached:
+    st.markdown("---")
+    st.markdown("### 📍 Detached HEAD")
+    detached_sha = st.session_state.repo.state.head
+    st.warning(
+        f"HEAD is detached at **{detached_sha[:7]}**. "
+        "Commits made here are not attached to a branch."
+    )
+    st.caption("Switch to an existing branch to return to normal branch-based work.")
+
+    branch_options = sorted(st.session_state.repo.state.branches)
+    if branch_options:
+        recovery_branch = st.selectbox(
+            "Recover by switching to branch",
+            branch_options,
+            key="detached_recovery_branch",
+        )
+        if st.button("↩️ Switch back to branch", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command(
+                f"git switch {recovery_branch}"
+            )
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+
+# ============================================================================
 # CHERRY-PICK WORKFLOW
 # ============================================================================
 
@@ -497,6 +525,8 @@ def _get_command_explanation(command: str) -> str:
         "git status": "**git status** shows the current state: which branch you're on, staged changes, and modifications.",
         
         "git reflog": "**git reflog** shows the reference logs - a record of all HEAD movements. Useful for recovering lost commits!",
+        
+        "git detach": "**Detached HEAD** means HEAD points directly to a commit instead of a branch. New commits are not advanced through a branch pointer.",
     }
     
     for cmd_pattern, explanation in explanations.items():
