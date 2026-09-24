@@ -289,13 +289,27 @@ class GitCommandExecutor:
             else:
                 raise GitCommandError(f"pathspec '{filename}' did not match any files")
         else:
-            # Discard changes in working tree
+            # Restore the working tree from the index. If the path is staged,
+            # keep the staged snapshot and discard only the working-tree delta.
             filename = args[0]
+            if filename in new_state.index.staged_files:
+                new_state.working_tree.modified_files.pop(filename, None)
+                new_state.working_tree.new_files.pop(filename, None)
+                new_state.working_tree.deleted_files.discard(filename)
+                return new_state, f"Restored '{filename}' from index"
+            if filename in new_state.index.staged_deletions:
+                new_state.working_tree.modified_files.pop(filename, None)
+                new_state.working_tree.new_files.pop(filename, None)
+                new_state.working_tree.deleted_files.discard(filename)
+                return new_state, f"Restored '{filename}' from index"
             if filename in new_state.working_tree.modified_files:
                 del new_state.working_tree.modified_files[filename]
                 return new_state, f"Restored '{filename}'"
             elif filename in new_state.working_tree.new_files:
                 del new_state.working_tree.new_files[filename]
+                return new_state, f"Restored '{filename}'"
+            elif filename in new_state.working_tree.deleted_files:
+                new_state.working_tree.deleted_files.discard(filename)
                 return new_state, f"Restored '{filename}'"
             else:
                 raise GitCommandError(f"pathspec '{filename}' did not match any files")
