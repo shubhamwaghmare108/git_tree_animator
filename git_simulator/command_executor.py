@@ -1465,7 +1465,7 @@ class GitCommandExecutor:
             if merged is not missing:
                 result[filename] = merged
 
-        return result
+        return result, conflicts
 
     def _find_merge_base(self, first_sha: str, second_sha: str, commits: dict) -> Optional[str]:
         """Find a nearest common ancestor for two commits."""
