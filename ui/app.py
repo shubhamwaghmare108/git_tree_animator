@@ -496,7 +496,7 @@ if quizzes:
             st.markdown("**Branches:**")
             st.markdown("\n".join(branch_rows))
         st.markdown("**Commit graph after execution:**")
-        render_git_graph(revealed_state)
+        st.plotly_chart(render_git_graph(revealed_state), use_container_width=True)
         with st.expander("Command-by-command execution"):
             for result in st.session_state.quiz_last_results:
                 icon = "✅" if result["success"] else "❌"
