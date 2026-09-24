@@ -251,7 +251,7 @@ This tool teaches:
 - [x] Push/pull/fetch animations
 - [x] Merge conflicts
 - [x] Stash
-- [ ] Tags
+- [x] Tags
 - [ ] Interactive quizzes
 - [ ] Real Git repository mode (libgit2)
 
@@ -460,3 +460,20 @@ A stash captures simulated working-tree and staged changes, then returns the
 working tree to a clean state. **apply** restores the changes while keeping the
 stash; **pop** restores and removes it. The Streamlit UI exposes the latest
 stash for quick apply/pop demonstrations.
+
+
+## Tag workflow
+
+Tags give commits stable, human-readable names:
+
+```
+git tag v1.0
+git tag -a v1.0 -m "first release"
+git tag v1.0 <commit>
+git tag
+git tag -d v1.0
+```
+
+The graph displays tags directly beside their target commits. Annotated tags are
+distinguished from lightweight tags, and tag names can be used anywhere the
+simulator resolves a commit reference.
