@@ -123,6 +123,8 @@ class GitState:
     rebase_onto_sha: Optional[str] = None
     rebase_pending_commits: List[str] = field(default_factory=list)
     rebase_current_commit: Optional[str] = None
+    cherry_pick_in_progress: bool = False
+    cherry_pick_commit_sha: Optional[str] = None
     
     def copy(self) -> "GitState":
         """Create a deep copy of state."""
@@ -152,6 +154,8 @@ class GitState:
             rebase_onto_sha=self.rebase_onto_sha,
             rebase_pending_commits=self.rebase_pending_commits.copy(),
             rebase_current_commit=self.rebase_current_commit,
+            cherry_pick_in_progress=self.cherry_pick_in_progress,
+            cherry_pick_commit_sha=self.cherry_pick_commit_sha,
         )
     
     def get_head_commit_sha(self) -> Optional[str]:
