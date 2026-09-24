@@ -896,3 +896,52 @@ def test_pull_fast_forwards_current_branch():
     assert success
     assert state.branches["main"].target_sha == remote_sha
     assert "Fast-forwarded" in message
+
+
+def test_stash_saves_changes_and_cleans_worktree():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    repo.set_working_file("app.py", "v2")
+    repo.set_working_file("notes.txt", "temporary")
+
+    success, message, state = repo.execute_command('git stash push -m "before refactor"')
+
+    assert success
+    assert not state.working_tree.has_changes()
+    assert not state.index.staged_content
+    assert state.stashes[0].message == "before refactor"
+
+
+def test_stash_apply_restores_saved_work_without_dropping_it():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    repo.set_working_file("app.py", "v2")
+    repo.execute_command("git stash")
+
+    success, message, state = repo.execute_command("git stash apply")
+
+    assert success
+    assert state.working_tree.modified_files["app.py"] == "v2"
+    assert len(state.stashes) == 1
+
+
+def test_stash_pop_restores_and_drops_latest_entry():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    repo.set_working_file("app.py", "v2")
+    repo.execute_command("git stash")
+
+    success, message, state = repo.execute_command("git stash pop")
+
+    assert success
+    assert state.working_tree.modified_files["app.py"] == "v2"
+    assert not state.stashes

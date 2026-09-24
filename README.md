@@ -250,7 +250,7 @@ This tool teaches:
 - [x] Remote repository simulation
 - [x] Push/pull/fetch animations
 - [x] Merge conflicts
-- [ ] Stash
+- [x] Stash
 - [ ] Tags
 - [ ] Interactive quizzes
 - [ ] Real Git repository mode (libgit2)
@@ -442,3 +442,21 @@ The graph distinguishes local branches from remote-tracking references such as
 remote-tracking ref without moving the current branch, and pull performs a
 fast-forward when the histories are compatible. Divergent pull histories are
 reported instead of silently creating a merge.
+
+
+## Stash workflow
+
+The simulator includes an educational stash stack:
+
+```
+git stash
+git stash list
+git stash apply stash@{0}
+git stash pop
+git stash drop stash@{0}
+```
+
+A stash captures simulated working-tree and staged changes, then returns the
+working tree to a clean state. **apply** restores the changes while keeping the
+stash; **pop** restores and removes it. The Streamlit UI exposes the latest
+stash for quick apply/pop demonstrations.
