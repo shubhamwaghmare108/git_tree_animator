@@ -185,6 +185,7 @@ class GitState:
             remotes=deepcopy(self.remotes),
             remote_servers=deepcopy(self.remote_servers),
             remote_urls=self.remote_urls.copy(),
+            stashes=deepcopy(self.stashes),
             reflog=list(self.reflog),
             timestamp=int(datetime.now().timestamp()),
             merge_in_progress=self.merge_in_progress,
