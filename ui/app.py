@@ -207,6 +207,39 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# MERGE CONFLICT RESOLUTION
+# ============================================================================
+
+if st.session_state.repo.state.merge_in_progress:
+    st.markdown("---")
+    st.markdown("### ⚠️ Merge Conflict Resolution")
+    st.warning("A merge is paused. Edit each conflicted file to remove the conflict markers, save it, then run git add . and git merge --continue.")
+    for conflict_file in sorted(st.session_state.repo.state.conflict_files):
+        conflict_content = st.session_state.repo.state.working_tree.modified_files.get(conflict_file, "")
+        resolved = st.text_area(
+            f"Resolve {conflict_file}",
+            value=conflict_content,
+            height=180,
+            key=f"conflict_editor_{conflict_file}",
+        )
+        if st.button(f"💾 Save resolution: {conflict_file}", key=f"save_conflict_{conflict_file}"):
+            st.session_state.repo.set_working_file(conflict_file, resolved)
+            st.success(f"Saved resolution for {conflict_file}. Run git add . next.")
+            st.rerun()
+
+    abort_col, continue_col = st.columns(2)
+    with abort_col:
+        if st.button("↩️ Abort merge", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git merge --abort")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+    with continue_col:
+        if st.button("✅ Continue merge", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git merge --continue")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+
+# ============================================================================
 # COMMAND INPUT & EXECUTION
 # ============================================================================
 
