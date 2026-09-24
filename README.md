@@ -131,7 +131,7 @@ pytest tests/ --cov=git_simulator --cov-report=html
 git-tree-animator/
 ├── git_simulator/              # Core Git simulation engine
 │   ├── __init__.py
-│   ├── state.py               # Immutable state models
+│   ├── state.py               # snapshot-based state models
 │   ├── command_executor.py    # Git command parser/executor
 │   ├── repository.py          # Main repository class
 │   └── errors.py              # Custom exceptions
@@ -156,7 +156,7 @@ git-tree-animator/
 
 ### Git Simulator Engine
 
-The simulator maintains an immutable `GitState` that tracks:
+The simulator maintains an snapshot-based `GitState` that tracks:
 
 ```python
 class GitState:
@@ -252,7 +252,7 @@ This tool teaches:
 
 ### Immutability
 
-`GitState` is immutable (via dataclasses). Each command creates a new state:
+`GitState` is snapshot-based (via dataclasses). Each command creates a new state:
 
 ```python
 new_state = state.copy()  # Doesn't mutate the original
@@ -359,3 +359,10 @@ Built for educational purposes. Learn Git by seeing exactly what it does! 🚀
 ---
 
 **Questions?** Check the [inline comments](git_simulator/command_executor.py) in the code or run the tests to understand how it works.
+
+
+## New in the state-transition upgrade
+
+The simulator now keeps a simplified committed file tree on every commit. The UI includes a working-tree editor so learners can make a file change, run `git add .`, and then commit it. The graph can replay command-history states with Play/Pause controls and a step slider.
+
+The simulator also uses shell-style argument parsing for quoted commit messages and produces visible conflict markers for files changed differently by both sides of a simulated merge.
