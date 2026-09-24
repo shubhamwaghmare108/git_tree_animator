@@ -830,3 +830,69 @@ def test_reflog_records_detached_head_transition():
     success, message, state = repo.execute_command("git reflog")
     assert success
     assert "detached HEAD" in message
+
+
+def test_remote_add_and_push_updates_remote_ref():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.execute_command('git remote add origin https://example.com/demo.git')
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    local_sha = repo.state.branches["main"].target_sha
+
+    success, message, state = repo.execute_command("git push origin main")
+
+    assert success
+    assert state.remote_urls["origin"] == "https://example.com/demo.git"
+    assert state.remote_servers["origin"]["main"].target_sha == local_sha
+    assert state.remotes["origin"]["main"].target_sha == local_sha
+
+
+def test_fetch_updates_remote_tracking_ref_without_moving_head():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.execute_command("git remote add origin https://example.com/demo.git")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    repo.execute_command("git push origin main")
+    head_before = repo.state.branches["main"].target_sha
+
+    # Simulate a remote-side commit by moving only the remote server ref.
+    repo.set_working_file("a.txt", "remote")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Remote work"')
+    remote_sha = repo.state.branches["main"].target_sha
+    repo.state.remote_servers["origin"]["main"].target_sha = remote_sha
+    repo.state.branches["main"].target_sha = head_before
+
+    success, message, state = repo.execute_command("git fetch origin")
+
+    assert success
+    assert state.branches["main"].target_sha == head_before
+    assert state.remotes["origin"]["main"].target_sha == remote_sha
+
+
+def test_pull_fast_forwards_current_branch():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.execute_command("git remote add origin https://example.com/demo.git")
+    repo.set_working_file("a.txt", "one")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Initial"')
+    repo.execute_command("git push origin main")
+    initial_sha = repo.state.branches["main"].target_sha
+
+    repo.set_working_file("a.txt", "remote")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "Remote work"')
+    remote_sha = repo.state.branches["main"].target_sha
+    repo.state.remote_servers["origin"]["main"].target_sha = remote_sha
+    repo.state.branches["main"].target_sha = initial_sha
+
+    success, message, state = repo.execute_command("git pull origin main")
+
+    assert success
+    assert state.branches["main"].target_sha == remote_sha
+    assert "Fast-forwarded" in message

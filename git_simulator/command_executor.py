@@ -224,6 +224,143 @@ class GitCommandExecutor:
         
         return new_state, f"[{new_state.head} {new_sha[:7]}] {message}"
     
+    # ========== Remote Commands ==========
+
+    def cmd_remote(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git remote add/list - Manage simulated remotes."""
+        new_state = state.copy()
+        if not args:
+            return new_state, "\n".join(sorted(new_state.remote_urls))
+        if args[0] == "add":
+            if len(args) != 3:
+                raise GitCommandError("Usage: git remote add <name> <url>")
+            name, url = args[1], args[2]
+            if name in new_state.remote_urls:
+                raise GitCommandError(f"remote '{name}' already exists")
+            new_state.remote_urls[name] = url
+            new_state.remote_servers[name] = {}
+            new_state.remotes[name] = {}
+            return new_state, f"Added remote '{name}'"
+        if args[0] == "-v":
+            lines = [
+                f"{name}\t{url} (fetch)\n{name}\t{url} (push)"
+                for name, url in sorted(new_state.remote_urls.items())
+            ]
+            return new_state, "\n".join(lines)
+        raise GitCommandError("Usage: git remote [add <name> <url>] or git remote -v")
+
+    def cmd_push(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git push <remote> <branch> - Update a simulated remote ref."""
+        if len(args) not in (1, 2):
+            raise GitCommandError("Usage: git push <remote> [branch]")
+        remote_name = args[0]
+        if remote_name not in state.remote_servers:
+            raise GitCommandError(f"fatal: '{remote_name}' is not a configured remote")
+        branch_name = args[1] if len(args) == 2 else state.head
+        if state.head_is_detached and len(args) == 1:
+            raise GitCommandError("fatal: HEAD is detached; specify a branch to push")
+        if branch_name not in state.branches:
+            raise GitCommandError(f"error: src refspec '{branch_name}' does not match any branch")
+        target_sha = state.branches[branch_name].target_sha
+        if not target_sha:
+            raise GitCommandError(f"error: branch '{branch_name}' has no commits to push")
+
+        new_state = state.copy()
+        new_state.remote_servers.setdefault(remote_name, {})[branch_name] = BranchPointer(
+            name=branch_name, target_sha=target_sha
+        )
+        new_state.remotes.setdefault(remote_name, {})[branch_name] = BranchPointer(
+            name=branch_name, target_sha=target_sha
+        )
+        new_state.reflog.append(ReflogEntry(
+            ref=f"{remote_name}/{branch_name}",
+            action="push",
+            sha=target_sha,
+            message=f"pushed {branch_name} to {remote_name}",
+        ))
+        return new_state, f"To {remote_name}\n * [new branch] {branch_name} -> {branch_name}"
+
+    def cmd_fetch(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git fetch <remote> - Refresh local remote-tracking refs."""
+        if len(args) > 1:
+            raise GitCommandError("Usage: git fetch [remote]")
+        remote_names = [args[0]] if args else sorted(state.remote_servers)
+        if not remote_names:
+            raise GitCommandError("No remotes configured")
+
+        new_state = state.copy()
+        lines = []
+        for remote_name in remote_names:
+            if remote_name not in new_state.remote_servers:
+                raise GitCommandError(f"fatal: '{remote_name}' does not appear to be a git repository")
+            tracking = new_state.remotes.setdefault(remote_name, {})
+            for branch_name, remote_ptr in new_state.remote_servers[remote_name].items():
+                tracking[branch_name] = BranchPointer(branch_name, remote_ptr.target_sha)
+                lines.append(f" {remote_name}/{branch_name} -> {remote_name}/{branch_name}")
+        new_state.reflog.append(ReflogEntry(
+            ref="FETCH_HEAD",
+            action="fetch",
+            sha="",
+            message=f"fetched {', '.join(remote_names)}",
+        ))
+        return new_state, "\n".join(lines) or "Everything up-to-date"
+
+    def _is_ancestor(self, ancestor_sha: Optional[str], descendant_sha: Optional[str], state: GitState) -> bool:
+        if not ancestor_sha:
+            return True
+        if not descendant_sha:
+            return False
+        stack = [descendant_sha]
+        seen = set()
+        while stack:
+            sha = stack.pop()
+            if sha in seen:
+                continue
+            seen.add(sha)
+            if sha == ancestor_sha:
+                return True
+            commit = state.commits.get(sha)
+            if commit:
+                stack.extend(commit.parents)
+        return False
+
+    def cmd_pull(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git pull <remote> [branch] - Fetch and fast-forward the current branch."""
+        if len(args) not in (1, 2):
+            raise GitCommandError("Usage: git pull <remote> [branch]")
+        if state.head_is_detached:
+            raise GitCommandError("fatal: cannot pull with detached HEAD")
+        remote_name = args[0]
+        branch_name = args[1] if len(args) == 2 else state.head
+        if state.head != branch_name:
+            raise GitCommandError("fatal: pull target must be the current branch")
+        if remote_name not in state.remote_servers:
+            raise GitCommandError(f"fatal: '{remote_name}' is not a configured remote")
+
+        fetched, fetch_msg = self.cmd_fetch([remote_name], state)
+        remote_ptr = fetched.remotes.get(remote_name, {}).get(branch_name)
+        if not remote_ptr or not remote_ptr.target_sha:
+            return fetched, f"{fetch_msg}\nNo remote branch '{branch_name}' to pull from"
+
+        current_sha = fetched.branches[branch_name].target_sha
+        target_sha = remote_ptr.target_sha
+        if current_sha == target_sha:
+            return fetched, f"{fetch_msg}\nAlready up to date."
+        if not self._is_ancestor(current_sha, target_sha, fetched):
+            raise GitCommandError(
+                "fatal: branches have diverged; this educational pull only supports fast-forward"
+            )
+
+        new_state = fetched.copy()
+        new_state.branches[branch_name] = BranchPointer(branch_name, target_sha)
+        new_state.reflog.append(ReflogEntry(
+            ref="HEAD",
+            action="pull",
+            sha=target_sha,
+            message=f"fast-forward {branch_name} from {remote_name}/{branch_name}",
+        ))
+        return new_state, f"{fetch_msg}\nFast-forwarded {branch_name} to {target_sha[:7]}"
+
     # ========== Branch Commands ==========
     
     def cmd_branch(self, args: List[str], state: GitState) -> Tuple[GitState, str]:

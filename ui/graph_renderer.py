@@ -133,6 +133,24 @@ def render_git_graph(state: GitState) -> go.Figure:
                 borderpad=4
             )
     
+    # Add remote-tracking labels. These are intentionally styled differently
+    # from local branches so learners can see local refs vs remote refs.
+    for remote_name, remote_branches in state.remotes.items():
+        for branch_name, branch_ptr in remote_branches.items():
+            if branch_ptr.target_sha and branch_ptr.target_sha in positions:
+                x, y = positions[branch_ptr.target_sha]
+                fig.add_annotation(
+                    x=x + 0.35,
+                    y=y - 0.05,
+                    text=f"<b>{remote_name}/{branch_name}</b>",
+                    showarrow=False,
+                    font=dict(size=9, color="purple", family="monospace"),
+                    bgcolor="rgba(220, 200, 255, 0.35)",
+                    bordercolor="purple",
+                    borderwidth=1,
+                    borderpad=3,
+                )
+
     # Add HEAD label
     if not state.head_is_detached:
         if state.head in state.branches:

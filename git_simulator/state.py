@@ -109,7 +109,12 @@ class GitState:
     index: IndexState = field(default_factory=IndexState)
     working_tree: WorkingTreeState = field(default_factory=WorkingTreeState)
     
-    remotes: Dict[str, Dict[str, BranchPointer]] = field(default_factory=dict)  # origin -> {branch_name -> BranchPointer}
+    # Local remote-tracking refs: origin -> {branch_name -> BranchPointer}
+    remotes: Dict[str, Dict[str, BranchPointer]] = field(default_factory=dict)
+    # Simulated remote servers: remote -> {branch_name -> BranchPointer}.
+    # The simulator keeps these refs in the same object database for teaching purposes.
+    remote_servers: Dict[str, Dict[str, BranchPointer]] = field(default_factory=dict)
+    remote_urls: Dict[str, str] = field(default_factory=dict)
     reflog: List[ReflogEntry] = field(default_factory=list)
     
     timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
@@ -144,6 +149,8 @@ class GitState:
                 deleted_files=self.working_tree.deleted_files.copy(),
             ),
             remotes=deepcopy(self.remotes),
+            remote_servers=deepcopy(self.remote_servers),
+            remote_urls=self.remote_urls.copy(),
             reflog=list(self.reflog),
             timestamp=int(datetime.now().timestamp()),
             merge_in_progress=self.merge_in_progress,

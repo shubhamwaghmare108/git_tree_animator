@@ -247,8 +247,8 @@ This tool teaches:
 - [x] Rebase with animation and conflict workflow
 - [x] Cherry-pick with conflict resolution
 - [x] Detached HEAD visualization and recovery
-- [ ] Remote repository simulation
-- [ ] Push/pull/fetch animations
+- [x] Remote repository simulation
+- [x] Push/pull/fetch animations
 - [x] Merge conflicts
 - [ ] Stash
 - [ ] Tags
@@ -424,3 +424,21 @@ this state and provides a recovery control to switch back to an existing branch.
 
 The reflog records the detached transition, making it possible to teach the
 relationship between HEAD, branch references, and recoverable history.
+
+
+## Remote repository simulation
+
+The simulator models a remote as an in-memory teaching repository:
+
+```
+git remote add origin https://example.com/student/demo.git
+git push origin main
+git fetch origin
+git pull origin main
+```
+
+The graph distinguishes local branches from remote-tracking references such as
+`origin/main`. Push moves the simulated remote ref, fetch refreshes the local
+remote-tracking ref without moving the current branch, and pull performs a
+fast-forward when the histories are compatible. Divergent pull histories are
+reported instead of silently creating a merge.
