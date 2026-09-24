@@ -81,6 +81,24 @@ class WorkingTreeState:
 
 
 @dataclass(frozen=True)
+class StashEntry:
+    """Saved working-tree and index snapshot used by the stash workflow."""
+
+    stash_id: int
+    message: str
+    base_sha: Optional[str]
+    modified_files: Dict[str, str] = field(default_factory=dict)
+    new_files: Dict[str, str] = field(default_factory=dict)
+    deleted_files: Set[str] = field(default_factory=set)
+    staged_content: Dict[str, str] = field(default_factory=dict)
+    staged_deletions: Set[str] = field(default_factory=set)
+
+    @property
+    def name(self) -> str:
+        return f"stash@{{{self.stash_id}}}"
+
+
+@dataclass(frozen=True)
 class ReflogEntry:
     """Single reflog entry."""
     
@@ -115,6 +133,7 @@ class GitState:
     # The simulator keeps these refs in the same object database for teaching purposes.
     remote_servers: Dict[str, Dict[str, BranchPointer]] = field(default_factory=dict)
     remote_urls: Dict[str, str] = field(default_factory=dict)
+    stashes: List["StashEntry"] = field(default_factory=list)
     reflog: List[ReflogEntry] = field(default_factory=list)
     
     timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
