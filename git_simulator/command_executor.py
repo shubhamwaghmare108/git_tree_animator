@@ -4,6 +4,7 @@ Simulates the effect of Git commands on repository state.
 """
 
 import hashlib
+import shlex
 from typing import List, Optional, Tuple
 from datetime import datetime
 
@@ -33,7 +34,10 @@ class GitCommandExecutor:
             raise GitCommandError("Command must start with 'git'")
         
         # Remove 'git ' prefix and split
-        parts = command[4:].split()
+        try:
+            parts = shlex.split(command[4:])
+        except ValueError as exc:
+            raise GitCommandError(f"invalid command quoting: {exc}")
         if not parts:
             raise GitCommandError("No command specified")
         
@@ -88,9 +92,11 @@ class GitCommandExecutor:
         # Stage all modified and new files
         for filename, content in new_state.working_tree.modified_files.items():
             new_state.index.staged_files[filename] = self._hash_content(content)
+            new_state.index.staged_content[filename] = content
         
         for filename, content in new_state.working_tree.new_files.items():
             new_state.index.staged_files[filename] = self._hash_content(content)
+            new_state.index.staged_content[filename] = content
         
         staged_count = len(new_state.index.staged_files)
         
@@ -111,6 +117,7 @@ class GitCommandExecutor:
             filename = args[1] if len(args) > 1 else args[0]
             if filename in new_state.index.staged_files:
                 del new_state.index.staged_files[filename]
+                new_state.index.staged_content.pop(filename, None)
                 return new_state, f"Unstaged '{filename}'"
             else:
                 raise GitCommandError(f"pathspec '{filename}' did not match any files")
@@ -160,6 +167,14 @@ class GitCommandExecutor:
         
         new_state = state.copy()
         
+        # Build a real snapshot from the parent tree plus staged content.
+        parent_tree = {}
+        if parent_sha and parent_sha in state.commits:
+            parent_tree = dict(state.commits[parent_sha].tree)
+        commit_tree = dict(parent_tree)
+        for filename, content in new_state.index.staged_content.items():
+            commit_tree[filename] = content
+
         # Create new commit
         new_sha = self._generate_sha(message, parent_sha)
         
@@ -169,7 +184,8 @@ class GitCommandExecutor:
             message=message,
             parents=parents,
             author="Git Learner",
-            timestamp=int(datetime.now().timestamp())
+            timestamp=int(datetime.now().timestamp()),
+            tree=commit_tree,
         )
         
         new_state.commits[new_sha] = commit
@@ -180,8 +196,13 @@ class GitCommandExecutor:
             target_sha=new_sha
         )
         
-        # Clear staging area
+        # Clear only the changes that were actually committed.
+        for filename in list(new_state.index.staged_content):
+            new_state.working_tree.modified_files.pop(filename, None)
+            new_state.working_tree.new_files.pop(filename, None)
+            new_state.working_tree.deleted_files.discard(filename)
         new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
         
         # Add reflog entry
         new_state.reflog.append(ReflogEntry(
@@ -460,10 +481,12 @@ class GitCommandExecutor:
         elif reset_mode == "--mixed":
             # Move changes to working tree
             new_state.index.staged_files.clear()
+            new_state.index.staged_content.clear()
         
         elif reset_mode == "--hard":
             # Discard all changes
             new_state.index.staged_files.clear()
+            new_state.index.staged_content.clear()
             new_state.working_tree = WorkingTreeState()
         
         # Add reflog entry
@@ -534,7 +557,8 @@ class GitCommandExecutor:
                 message=f"Merge branch '{merge_branch}' into {new_state.head}",
                 parents=[current_sha, merge_sha],
                 author="Git Learner",
-                timestamp=int(datetime.now().timestamp())
+                timestamp=int(datetime.now().timestamp()),
+                tree=self._merge_trees(current_sha, merge_sha, new_state),
             )
             
             new_state.commits[merge_sha_new] = merge_commit
@@ -554,6 +578,27 @@ class GitCommandExecutor:
     
     # ========== Helper Methods ==========
     
+
+    def _merge_trees(self, current_sha: str, merge_sha: str, state: GitState) -> dict:
+        """Create a deterministic educational merge tree.
+
+        Non-conflicting files from the merge side are applied over the current
+        tree. Conflicting files get visible conflict markers.
+        """
+        current = dict(state.commits[current_sha].tree)
+        incoming = dict(state.commits[merge_sha].tree)
+        result = dict(current)
+        for filename, content in incoming.items():
+            if filename not in current or current[filename] == content:
+                result[filename] = content
+            else:
+                result[filename] = (
+                    "<<<<<<< current\n" + current[filename] +
+                    "\n=======\n" + content +
+                    "\n>>>>>>> " + state.head
+                )
+        return result
+
     def _generate_sha(self, message: str, parent_sha: Optional[str]) -> str:
         """Generate deterministic SHA for a commit."""
         self._sha_counter += 1

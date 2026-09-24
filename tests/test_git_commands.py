@@ -314,11 +314,14 @@ class TestGitReset:
         repo.execute_command('git commit -m "C1"')
         repo.execute_command('git commit -m "C2"')
         
-        c1_sha = repo.state.commits.popitem()[0]  # Get first commit
-        
+        c2_sha = repo.state.get_head_commit_sha()
+        c1_sha = repo.state.commits[c2_sha].parents[0]
+
         success, msg, state = repo.execute_command("git reset --soft HEAD~1")
-        
+
         assert success
+        assert state.branches["main"].target_sha == c1_sha
+        assert c2_sha in state.commits
     
     def test_reset_mixed_clears_index(self):
         repo = GitRepository()
@@ -419,3 +422,44 @@ class TestEdgeCases:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestFileSnapshots:
+    """Tests for working-tree, index, and committed file snapshots."""
+
+    def test_add_and_commit_persist_file_tree(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        repo.set_working_file("demo.py", "print('hello')")
+        success, msg, state = repo.execute_command("git add .")
+        assert success
+        assert "demo.py" in state.index.staged_content
+
+        success, msg, state = repo.execute_command('git commit -m "Add demo"')
+        assert success
+        head = state.get_head_commit_sha()
+        assert state.commits[head].tree["demo.py"] == "print('hello')"
+        assert not state.working_tree.has_changes()
+
+    def test_second_commit_keeps_parent_tree(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        repo.set_working_file("demo.py", "v1")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "v1"')
+
+        repo.set_working_file("demo.py", "v2")
+        repo.execute_command("git add .")
+        repo.execute_command('git commit -m "v2"')
+
+        head = repo.state.get_head_commit_sha()
+        parent = repo.state.commits[head].parents[0]
+        assert repo.state.commits[parent].tree["demo.py"] == "v1"
+        assert repo.state.commits[head].tree["demo.py"] == "v2"
+
+    def test_commit_command_handles_quoted_message(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        success, msg, state = repo.execute_command('git commit -m "quoted message with spaces"')
+        assert success
+        assert "quoted message with spaces" in msg

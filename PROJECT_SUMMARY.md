@@ -2,7 +2,7 @@
 
 ## ✅ Phase 1 Complete
 
-A fully functional, production-quality Git repository simulator with interactive web visualization.
+A fully functional, educational Git repository simulator with interactive web visualization.
 
 ### What You Get
 
@@ -10,11 +10,11 @@ A fully functional, production-quality Git repository simulator with interactive
 - Pure Python implementation
 - 50+ passing unit tests
 - All major Git commands for Phase 1
-- Immutable state management
+- snapshot-based state management
 - History replay capability
 
 **Interactive Streamlit Application**
-- Beautiful commit graph visualization with Plotly
+- Interactive commit graph visualization with Plotly, playback controls, and history scrubbing
 - Real-time command execution
 - Educational explanations
 - Built-in lessons
@@ -36,7 +36,7 @@ git-tree-animator/
 │
 ├── git_simulator/                 # Core simulator (Python)
 │   ├── __init__.py               # Package initialization
-│   ├── state.py                  # Immutable state models (300 lines)
+│   ├── state.py                  # snapshot-based state models (300 lines)
 │   ├── command_executor.py       # Command parser/executor (500 lines)
 │   ├── repository.py             # Main repository class (100 lines)
 │   └── errors.py                 # Custom exceptions (30 lines)
@@ -127,7 +127,7 @@ No dependency on actual Git CLI:
 - ✅ Platform-independent
 - ✅ Easy to extend
 
-### 2. Immutable State
+### 2. snapshot-based State
 
 Each command produces a new state:
 - ✅ Trivial history replay
@@ -174,7 +174,7 @@ Run: `pytest tests/ -v`
 | Graphs | Plotly | 5.18.0 |
 | Testing | pytest | 7.4.3 |
 | Type Safety | dataclasses | Built-in |
-| State | Immutable dataclasses | Built-in |
+| State | snapshot-based dataclasses | Built-in |
 
 ---
 
@@ -299,7 +299,7 @@ pytest tests/ -v
 This tool teaches:
 
 ✅ **Git Internals**
-- Commits as immutable snapshots
+- Commits as snapshot-based snapshots
 - Branches as pointers
 - HEAD as current reference
 - Parent-child relationships
@@ -356,7 +356,7 @@ Streamlit re-renders
 ### State Management
 
 ```python
-# Old state (immutable)
+# Old state (snapshot-based)
 old_state = state
 
 # Execute command

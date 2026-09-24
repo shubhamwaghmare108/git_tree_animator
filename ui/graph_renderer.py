@@ -189,6 +189,89 @@ def render_git_graph(state: GitState) -> go.Figure:
     return fig
 
 
+
+def render_git_animation(states: List[GitState], speed: float = 1.0) -> go.Figure:
+    """Render command-history states as a playable Plotly animation."""
+    if not states:
+        return render_git_graph(GitState())
+
+    base = render_git_graph(states[-1])
+    frames = []
+    for index, state in enumerate(states):
+        frame_fig = render_git_graph(state)
+        frames.append(
+            go.Frame(
+                data=list(frame_fig.data),
+                layout=frame_fig.layout,
+                name=str(index),
+            )
+        )
+
+    duration = max(150, int(700 / max(speed, 0.1)))
+    base.frames = frames
+    base.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                showactive=False,
+                x=0.02,
+                y=1.12,
+                xanchor="left",
+                yanchor="top",
+                buttons=[
+                    dict(
+                        label="▶ Play",
+                        method="animate",
+                        args=[
+                            None,
+                            {
+                                "frame": {"duration": duration, "redraw": True},
+                                "transition": {"duration": max(80, duration // 2)},
+                                "fromcurrent": True,
+                            },
+                        ],
+                    ),
+                    dict(
+                        label="⏸ Pause",
+                        method="animate",
+                        args=[
+                            [None],
+                            {
+                                "frame": {"duration": 0, "redraw": False},
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    ),
+                ],
+            )
+        ],
+        sliders=[
+            dict(
+                active=len(states) - 1,
+                x=0.02,
+                y=-0.08,
+                xanchor="left",
+                yanchor="top",
+                currentvalue={"prefix": "Command step: "},
+                steps=[
+                    dict(
+                        label=str(i + 1),
+                        method="animate",
+                        args=[
+                            [str(i)],
+                            {
+                                "frame": {"duration": 0, "redraw": True},
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    )
+                    for i in range(len(states))
+                ],
+            )
+        ],
+    )
+    return base
+
 def _calculate_positions(commits: dict, state: GitState) -> Dict[str, Tuple[float, float]]:
     """
     Calculate x, y positions for commits in a DAG layout.

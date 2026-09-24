@@ -59,6 +59,36 @@ class GitRepository:
             return True
         return False
     
+    def set_working_file(self, filename: str, content: str) -> GitState:
+        """Edit a simulated working-tree file without invoking Git."""
+        if not filename.strip():
+            raise ValueError("filename cannot be empty")
+        new_state = self.state.copy()
+        head_sha = new_state.get_head_commit_sha()
+        head_tree = new_state.commits[head_sha].tree if head_sha in new_state.commits else {}
+        if filename in head_tree:
+            new_state.working_tree.modified_files[filename] = content
+            new_state.working_tree.new_files.pop(filename, None)
+        else:
+            new_state.working_tree.new_files[filename] = content
+        new_state.working_tree.deleted_files.discard(filename)
+        self.state = new_state
+        return new_state
+
+    def delete_working_file(self, filename: str) -> GitState:
+        """Delete a simulated working-tree file."""
+        new_state = self.state.copy()
+        head_sha = new_state.get_head_commit_sha()
+        head_tree = new_state.commits[head_sha].tree if head_sha in new_state.commits else {}
+        new_state.working_tree.modified_files.pop(filename, None)
+        new_state.working_tree.new_files.pop(filename, None)
+        if filename in head_tree:
+            new_state.working_tree.deleted_files.add(filename)
+        else:
+            new_state.working_tree.deleted_files.discard(filename)
+        self.state = new_state
+        return new_state
+
     def get_commit_graph_data(self) -> dict:
         """
         Return data for rendering the commit graph.

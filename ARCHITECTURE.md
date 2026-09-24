@@ -6,9 +6,9 @@ Git Tree Animator is a pure Python Git simulator with an interactive Streamlit f
 
 ## Core Design Principles
 
-### 1. Immutable State
+### 1. snapshot-based State
 
-`GitState` is an immutable snapshot of repository state at a point in time:
+`GitState` is an snapshot-based snapshot of repository state at a point in time:
 
 ```python
 @dataclass
@@ -23,12 +23,12 @@ class GitState:
     timestamp: int
 ```
 
-**Why immutable?**
+**Why snapshot-based?**
 
 - Enables trivial history replay
 - Prevents accidental mutation bugs
 - Makes time-travel debugging simple
-- Aligns with Git's actual design (objects are immutable)
+- Aligns with Git's actual design (objects are snapshot-based)
 
 ### 2. Command Execution Pipeline
 
@@ -78,7 +78,7 @@ def cmd_commit(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
 
 ### `git_simulator/state.py`
 
-**Immutable models for Git objects:**
+**snapshot-based models for Git objects:**
 
 ```python
 Commit          # Represents a commit snapshot
@@ -91,7 +91,7 @@ GitState        # Complete repository state snapshot
 
 **Key Properties:**
 
-- All are frozen dataclasses (immutable)
+- All are frozen dataclasses (snapshot-based)
 - Can be copied with `.copy()` method
 - Support introspection (`.short_sha`, `.has_changes()`, etc.)
 
@@ -403,7 +403,7 @@ render_something(st.session_state.repo.state)
 ### Phase 2: History Visualization
 
 - Timeline view of state over time
-- Animated transitions between states
+- Playable animated transitions between repository states
 - Slider to scrub through history
 
 ### Phase 3: Advanced Operations

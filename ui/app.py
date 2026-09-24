@@ -7,7 +7,7 @@ Run with: streamlit run ui/app.py
 import streamlit as st
 from git_simulator.repository import GitRepository
 from git_simulator.state import WorkingTreeState
-from ui.graph_renderer import render_git_graph
+from ui.graph_renderer import render_git_graph, render_git_animation
 from ui.file_display import render_staging_area, render_working_tree, render_repository_state, render_commit_details
 
 
@@ -147,7 +147,11 @@ col_graph, col_state = st.columns([2.5, 1.5])
 
 with col_graph:
     st.markdown("### 📊 Commit Graph")
-    fig = render_git_graph(st.session_state.repo.state)
+    if st.session_state.repo.history:
+        history_states = [state for _, state in st.session_state.repo.history]
+        fig = render_git_animation(history_states, animation_speed)
+    else:
+        fig = render_git_graph(st.session_state.repo.state)
     st.plotly_chart(fig, use_container_width=True, key="git_graph")
 
 with col_state:
@@ -162,6 +166,45 @@ with col_state:
     
     st.markdown("#### Working Directory")
     render_working_tree(st.session_state.repo.state.working_tree)
+
+# ============================================================================
+# SIMULATED WORKING TREE EDITOR
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 📝 Working Tree Editor")
+st.caption("Edit simulated files, then use git add . and git commit to see a file snapshot move into the commit graph.")
+
+edit_col1, edit_col2 = st.columns([1, 2])
+with edit_col1:
+    existing_files = sorted(
+        set(st.session_state.repo.state.working_tree.modified_files)
+        | set(st.session_state.repo.state.working_tree.new_files)
+    )
+    file_options = ["<new file>"] + existing_files
+    selected_file = st.selectbox("File", file_options, key="editor_file")
+    filename = st.text_input(
+        "Filename",
+        value="" if selected_file == "<new file>" else selected_file,
+        key="editor_filename",
+    )
+with edit_col2:
+    current_content = ""
+    if selected_file != "<new file>":
+        current_content = (
+            st.session_state.repo.state.working_tree.modified_files.get(selected_file)
+            or st.session_state.repo.state.working_tree.new_files.get(selected_file)
+            or ""
+        )
+    content = st.text_area("Content", value=current_content, height=140, key="editor_content")
+
+if st.button("💾 Save working-tree change"):
+    if filename.strip():
+        st.session_state.repo.set_working_file(filename.strip(), content)
+        st.success(f"Working tree updated: {filename.strip()}")
+        st.rerun()
+    else:
+        st.error("Enter a filename.")
 
 # ============================================================================
 # COMMAND INPUT & EXECUTION
