@@ -41,7 +41,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "git-tree-animator=ui.app:main",
+            "git-tree-animator=run:main",
         ],
     },
 )

@@ -201,21 +201,38 @@ class GitCommandExecutor:
             raise GitCommandError("Usage: git add . or git add <file>")
         
         new_state = state.copy()
-        
-        # Stage all modified and new files
-        for filename, content in new_state.working_tree.modified_files.items():
+        head_tree = self._head_tree(state)
+        staged_count = 0
+
+        # Stage modified and new files. The working tree stores only
+        # differences from HEAD, so successfully staged paths leave the
+        # working-tree delta and live in the index until commit/unstage.
+        for filename, content in list(new_state.working_tree.modified_files.items()):
             new_state.index.staged_files[filename] = self._hash_content(content)
             new_state.index.staged_content[filename] = content
-        
-        for filename, content in new_state.working_tree.new_files.items():
+            new_state.index.staged_deletions.discard(filename)
+            del new_state.working_tree.modified_files[filename]
+            staged_count += 1
+
+        for filename, content in list(new_state.working_tree.new_files.items()):
             new_state.index.staged_files[filename] = self._hash_content(content)
             new_state.index.staged_content[filename] = content
-        
-        staged_count = len(new_state.index.staged_files)
-        
-        # Simulate: working tree is updated (files added to index)
-        # In real git, this would be tracked per file
-        
+            new_state.index.staged_deletions.discard(filename)
+            del new_state.working_tree.new_files[filename]
+            staged_count += 1
+
+        for filename in list(new_state.working_tree.deleted_files):
+            if filename in head_tree:
+                new_state.index.staged_deletions.add(filename)
+                new_state.index.staged_files.pop(filename, None)
+                new_state.index.staged_content.pop(filename, None)
+                new_state.working_tree.deleted_files.discard(filename)
+                staged_count += 1
+
+        # Staging a conflict resolution marks those paths resolved.
+        new_state.conflict_files.difference_update(
+            set(new_state.index.staged_files) | new_state.index.staged_deletions
+        )
         return new_state, f"Added {staged_count} files to index"
     
     def cmd_restore(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
@@ -229,9 +246,21 @@ class GitCommandExecutor:
             # Unstage file
             filename = args[1] if len(args) > 1 else args[0]
             if filename in new_state.index.staged_files:
+                staged_content = new_state.index.staged_content.pop(filename, None)
                 del new_state.index.staged_files[filename]
-                new_state.index.staged_content.pop(filename, None)
                 new_state.index.staged_deletions.discard(filename)
+                head_tree = self._head_tree(state)
+                if staged_content is not None:
+                    if filename in head_tree:
+                        new_state.working_tree.modified_files[filename] = staged_content
+                    else:
+                        new_state.working_tree.new_files[filename] = staged_content
+                return new_state, f"Unstaged '{filename}'"
+            elif filename in new_state.index.staged_deletions:
+                new_state.index.staged_deletions.discard(filename)
+                head_tree = self._head_tree(state)
+                if filename in head_tree:
+                    new_state.working_tree.deleted_files.add(filename)
                 return new_state, f"Unstaged '{filename}'"
             else:
                 raise GitCommandError(f"pathspec '{filename}' did not match any files")
@@ -318,11 +347,9 @@ class GitCommandExecutor:
             target_sha=new_sha
         )
         
-        # Clear only the changes that were actually committed.
-        for filename in list(new_state.index.staged_content):
-            new_state.working_tree.modified_files.pop(filename, None)
-            new_state.working_tree.new_files.pop(filename, None)
-            new_state.working_tree.deleted_files.discard(filename)
+        # A successful commit consumes the entire index. Any remaining
+        # working-tree deltas are genuinely unstaged and must survive.
+        new_state.working_tree.deleted_files.difference_update(new_state.index.staged_deletions)
         new_state.index.staged_files.clear()
         new_state.index.staged_content.clear()
         new_state.index.staged_deletions.clear()
@@ -630,6 +657,9 @@ class GitCommandExecutor:
         else:
             branch_name = args[0]
         
+        if state.index.staged_files or state.index.staged_content or state.index.staged_deletions or state.working_tree.has_changes():
+            raise GitCommandError("Cannot switch branches with local changes; commit or stash them first")
+
         new_state = state.copy()
         
         if create_new:
@@ -774,7 +804,70 @@ class GitCommandExecutor:
         return state, "\n".join(lines)
     
     # ========== Reset Commands ==========
-    
+
+    def _head_tree(self, state: GitState) -> dict:
+        """Return the full snapshot at HEAD, or an empty tree."""
+        sha = state.get_head_commit_sha()
+        if sha and sha in state.commits:
+            return dict(state.commits[sha].tree)
+        return {}
+
+    def _working_tree_snapshot(self, state: GitState) -> dict:
+        """Materialize the user's current working-tree snapshot."""
+        tree = self._head_tree(state)
+        for filename, content in state.index.staged_content.items():
+            tree[filename] = content
+        for filename in state.index.staged_deletions:
+            tree.pop(filename, None)
+        for filename, content in state.working_tree.modified_files.items():
+            tree[filename] = content
+        for filename, content in state.working_tree.new_files.items():
+            tree[filename] = content
+        for filename in state.working_tree.deleted_files:
+            tree.pop(filename, None)
+        return tree
+
+    def _delta_to_working_tree(self, base_tree: dict, target_tree: dict) -> WorkingTreeState:
+        """Represent target_tree as working changes relative to base_tree."""
+        modified = {
+            filename: content
+            for filename, content in target_tree.items()
+            if filename in base_tree and base_tree[filename] != content
+        }
+        new_files = {
+            filename: content
+            for filename, content in target_tree.items()
+            if filename not in base_tree
+        }
+        deleted = set(base_tree) - set(target_tree)
+        return WorkingTreeState(
+            modified_files=modified,
+            new_files=new_files,
+            deleted_files=deleted,
+        )
+
+    def _tree_to_index(self, base_tree: dict, target_tree: dict) -> IndexState:
+        """Represent target_tree as staged changes relative to base_tree."""
+        staged_content = {
+            filename: content
+            for filename, content in target_tree.items()
+            if filename not in base_tree or base_tree[filename] != content
+        }
+        staged_deletions = set(base_tree) - set(target_tree)
+        return IndexState(
+            staged_files={name: self._hash_content(content) for name, content in staged_content.items()},
+            staged_content=staged_content,
+            staged_deletions=staged_deletions,
+        )
+
+    def _trees_equal(self, left: dict, right: dict) -> bool:
+        return left == right
+
+    def _replace_working_state(self, state: GitState, tree: dict) -> None:
+        """Replace index/working tree with a clean checkout of tree."""
+        state.index = IndexState()
+        state.working_tree = WorkingTreeState()
+
     def cmd_reset(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
         """git reset [--soft|--mixed|--hard] [<commit>] - Reset HEAD."""
         if not state.branches:
@@ -800,31 +893,33 @@ class GitCommandExecutor:
             raise GitCommandError(f"fatal: bad revision '{target_ref}'")
         
         new_state = state.copy()
-        
-        # Get the commit being reset to
         target_commit = new_state.commits[target_sha]
-        
-        # Move branch pointer
+        old_head_tree = self._head_tree(state)
+        current_working_tree = self._working_tree_snapshot(state)
+        target_tree = dict(target_commit.tree)
+
+        # Reset moves the branch ref first. The index and working tree are
+        # then reconstructed from the old snapshots, matching Git's three
+        # reset modes rather than merely clearing dictionaries.
         new_state.branches[new_state.head] = BranchPointer(
             name=new_state.head,
             target_sha=target_sha
         )
-        
+
         if reset_mode == "--soft":
-            # Keep staged and working tree changes
-            pass
-        
+            # HEAD moves; index and working tree remain the same snapshots.
+            new_state.index = self._tree_to_index(target_tree, old_head_tree)
+            new_state.working_tree = self._delta_to_working_tree(
+                old_head_tree, current_working_tree
+            )
         elif reset_mode == "--mixed":
-            # Move changes to working tree
-            new_state.index.staged_files.clear()
-            new_state.index.staged_content.clear()
-            new_state.index.staged_deletions.clear()
-        
+            # HEAD and index move to target; working files remain as-is.
+            new_state.index = IndexState()
+            new_state.working_tree = self._delta_to_working_tree(
+                target_tree, current_working_tree
+            )
         elif reset_mode == "--hard":
-            # Discard all changes
-            new_state.index.staged_files.clear()
-            new_state.index.staged_content.clear()
-            new_state.index.staged_deletions.clear()
+            new_state.index = IndexState()
             new_state.working_tree = WorkingTreeState()
         
         # Add reflog entry
