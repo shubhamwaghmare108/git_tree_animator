@@ -286,6 +286,33 @@ class GitCommandExecutor:
         
         return new_state, f"Deleted branch '{branch_name}'"
     
+    # ========== Detached HEAD / Recovery Commands ==========
+
+    def _ensure_no_operation_in_progress(self, state: GitState, operation: str) -> None:
+        if state.merge_in_progress or state.rebase_in_progress or state.cherry_pick_in_progress:
+            raise GitCommandError(f"Cannot {operation} while another Git operation is in progress")
+
+    def cmd_detach(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """Educational helper: detach HEAD at a commit."""
+        if not args:
+            raise GitCommandError("Usage: git detach <commit>")
+        self._ensure_no_operation_in_progress(state, "detach HEAD")
+        target_sha = self._resolve_ref(args[0], state)
+        if not target_sha:
+            raise GitCommandError(f"fatal: bad revision '{args[0]}'")
+        new_state = state.copy()
+        new_state.head_is_detached = True
+        new_state.head = target_sha
+        new_state.reflog.append(
+            ReflogEntry(
+                ref="HEAD",
+                action="checkout",
+                sha=target_sha,
+                message=f"detached HEAD at {target_sha[:7]}",
+            )
+        )
+        return new_state, f"HEAD is now detached at {target_sha[:7]}"
+
     # ========== Switching/Checkout Commands ==========
     
     def cmd_switch(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
