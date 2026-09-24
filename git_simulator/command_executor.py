@@ -221,17 +221,20 @@ class GitCommandExecutor:
         if not state.branches:
             raise GitCommandError("Not a git repository")
         
-        if not args or args[0] not in (".", "*"):
-            raise GitCommandError("Usage: git add . or git add <file>")
-        
+        if not args:
+            raise GitCommandError("Usage: git add . | git add <file>")
+
         new_state = state.copy()
         head_tree = self._head_tree(state)
         staged_count = 0
+        requested = None if args[0] in (".", "*") else set(args)
 
         # Stage modified and new files. The working tree stores only
         # differences from HEAD, so successfully staged paths leave the
         # working-tree delta and live in the index until commit/unstage.
         for filename, content in list(new_state.working_tree.modified_files.items()):
+            if requested is not None and filename not in requested:
+                continue
             new_state.index.staged_files[filename] = self._hash_content(content)
             new_state.index.staged_content[filename] = content
             new_state.index.staged_deletions.discard(filename)
@@ -239,6 +242,8 @@ class GitCommandExecutor:
             staged_count += 1
 
         for filename, content in list(new_state.working_tree.new_files.items()):
+            if requested is not None and filename not in requested:
+                continue
             new_state.index.staged_files[filename] = self._hash_content(content)
             new_state.index.staged_content[filename] = content
             new_state.index.staged_deletions.discard(filename)
@@ -246,6 +251,8 @@ class GitCommandExecutor:
             staged_count += 1
 
         for filename in list(new_state.working_tree.deleted_files):
+            if requested is not None and filename not in requested:
+                continue
             if filename in head_tree:
                 new_state.index.staged_deletions.add(filename)
                 new_state.index.staged_files.pop(filename, None)
