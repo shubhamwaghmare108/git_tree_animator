@@ -1320,3 +1320,21 @@ class TestCurrentDebugRegressions:
         assert state.merge_in_progress
         assert state.conflict_files == {"shared.txt"}
         assert "<<<<<<< current" in state.working_tree.modified_files["shared.txt"]
+
+
+# Regression: a staged deletion is still a pending index change.
+def test_status_does_not_report_clean_with_only_staged_deletion():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+    repo.delete_working_file("app.py")
+    success, _, state = repo.execute_command("git add .")
+    assert success
+
+    success, status, _ = repo.execute_command("git status")
+    assert success
+    assert "Changes to be committed:" in status
+    assert "deleted:    app.py" in status
+    assert "nothing to commit, working tree clean" not in status
