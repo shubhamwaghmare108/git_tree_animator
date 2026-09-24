@@ -517,3 +517,10 @@ Mission completion is now based on the actual simulated repository state, not si
 ### Semantic Animation Timeline
 
 The graph animation is now paired with a semantic timeline. Each executed Git command gets a learner-friendly explanation and before/after state metrics for commits, HEAD, working-tree changes, and staged paths. A step slider lets learners inspect the transition corresponding to each command.
+
+
+### Timeline State Scrubbing
+
+The semantic timeline now acts as a repository time machine. The timeline slider selects an exact historical `GitState`, and the commit graph plus repository-state panels render that snapshot without changing the live repository.
+
+The scrubber also shows a small visible delta for the selected command, helping learners connect commands with concrete reference and committed-file changes.
