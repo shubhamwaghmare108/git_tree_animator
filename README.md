@@ -487,3 +487,8 @@ predict the resulting Git state, then explains the expected result.
 
 The quiz score is tracked during the current Streamlit session so learners can
 repeat scenarios and build confidence before using the terminal.
+
+
+### State-aware Git challenges
+
+Quiz scenarios now execute against a fresh GitRepository before the answer is revealed. After a prediction, learners can inspect the actual HEAD, branch pointers, commit graph, and command-by-command results. This turns the quiz from a static multiple-choice exercise into a simulator-backed prediction exercise.

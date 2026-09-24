@@ -9,7 +9,7 @@ from git_simulator.repository import GitRepository
 from git_simulator.state import WorkingTreeState
 from ui.graph_renderer import render_git_graph, render_git_animation
 from ui.file_display import render_staging_area, render_working_tree, render_repository_state, render_commit_details
-from ui.quiz import get_quizzes
+from ui.quiz import get_quizzes, run_quiz_scenario
 
 
 # Page configuration
@@ -450,55 +450,75 @@ if st.session_state.repo.state.merge_in_progress:
             st.rerun()
 
 # ============================================================================
-# INTERACTIVE GIT QUIZ
+# STATE-AWARE INTERACTIVE GIT QUIZ
 # ============================================================================
 
 st.markdown("---")
 st.markdown("### 🧠 Git Challenge")
-st.caption("Predict the result before looking at the answer. Score yourself and learn why.")
+st.caption("Predict the repository state first. The simulator executes the scenario and reveals the real commit graph after you check your answer.")
 
-quiz_level = st.selectbox(
-    "Challenge level",
-    ["All", "Beginner", "Intermediate", "Advanced"],
-    key="quiz_level",
-)
+quiz_level = st.selectbox("Challenge level", ["All", "Beginner", "Intermediate", "Advanced"], key="quiz_level")
 quizzes = get_quizzes(quiz_level)
-if "quiz_score" not in st.session_state:
-    st.session_state.quiz_score = 0
-if "quiz_attempts" not in st.session_state:
-    st.session_state.quiz_attempts = 0
+if "quiz_score" not in st.session_state: st.session_state.quiz_score = 0
+if "quiz_attempts" not in st.session_state: st.session_state.quiz_attempts = 0
+if "quiz_revealed" not in st.session_state: st.session_state.quiz_revealed = False
 
 if quizzes:
     quiz = quizzes[st.session_state.quiz_attempts % len(quizzes)]
     st.markdown(f"**{quiz['level']} · {quiz['title']}**")
     st.write("**Scenario:**")
-    for step in quiz["setup"]:
-        st.code(step)
-    st.write(quiz["question"])
-    answer = st.radio(
-        "Choose one:",
-        quiz["options"],
-        key=f"quiz_answer_{st.session_state.quiz_attempts}_{quiz['id']}",
-    )
-    if st.button("Check answer", key=f"quiz_check_{st.session_state.quiz_attempts}_{quiz['id']}"):
+    for step in quiz["setup"]: st.code(step)
+    st.write(f"**Predict:** {quiz['question']}")
+    answer = st.radio("Choose one:", quiz["options"], key=f"quiz_answer_{st.session_state.quiz_attempts}_{quiz['id']}")
+
+    if st.button("Check prediction", key=f"quiz_check_{st.session_state.quiz_attempts}_{quiz['id']}"):
+        repo, results = run_quiz_scenario(quiz)
         selected = quiz["options"].index(answer)
-        st.session_state.quiz_attempts += 1
+        st.session_state.quiz_revealed = True
+        st.session_state.quiz_last_repo = repo
+        st.session_state.quiz_last_results = results
         if selected == quiz["answer"]:
             st.session_state.quiz_score += 1
-            st.success("✅ Correct!")
+            st.success("✅ Correct prediction!")
         else:
-            st.error(f"❌ Not quite. The expected answer is: {quiz['options'][quiz['answer']]}")
+            st.error(f"❌ Prediction differs. Expected: {quiz['options'][quiz['answer']]}")
         st.info(quiz["explanation"])
-        st.rerun()
 
-    q_col1, q_col2 = st.columns(2)
-    with q_col1:
-        st.metric("Score", f"{st.session_state.quiz_score}")
-    with q_col2:
-        st.metric("Attempts", f"{st.session_state.quiz_attempts}")
+    if st.session_state.quiz_revealed and "quiz_last_repo" in st.session_state:
+        revealed_repo = st.session_state.quiz_last_repo
+        revealed_state = revealed_repo.state
+        st.markdown("#### 🔎 Actual simulator state")
+        head_sha = revealed_state.get_head_commit_sha()
+        head_label = "DETACHED HEAD" if revealed_state.head_is_detached else revealed_state.head
+        st.write(f"**HEAD:** {head_label} → {head_sha[:7] if head_sha else 'none'}")
+        branch_rows = [f"- {name} → {pointer.target_sha[:7]}" for name, pointer in revealed_state.branches.items()]
+        if branch_rows:
+            st.markdown("**Branches:**")
+            st.markdown("\n".join(branch_rows))
+        st.markdown("**Commit graph after execution:**")
+        st.plotly_chart(render_git_graph(revealed_state), use_container_width=True)
+        with st.expander("Command-by-command execution"):
+            for result in st.session_state.quiz_last_results:
+                icon = "✅" if result["success"] else "❌"
+                st.write(f"{icon} {result['command']} — {result['output']}")
+
+    q_col1, q_col2, q_col3 = st.columns(3)
+    with q_col1: st.metric("Score", st.session_state.quiz_score)
+    with q_col2: st.metric("Attempts", st.session_state.quiz_attempts)
+    with q_col3:
+        if st.button("Next challenge", key="next_quiz"):
+            st.session_state.quiz_attempts += 1
+            st.session_state.quiz_revealed = False
+            st.session_state.pop("quiz_last_repo", None)
+            st.session_state.pop("quiz_last_results", None)
+            st.rerun()
+
     if st.button("Reset quiz score", key="reset_quiz_score"):
         st.session_state.quiz_score = 0
         st.session_state.quiz_attempts = 0
+        st.session_state.quiz_revealed = False
+        st.session_state.pop("quiz_last_repo", None)
+        st.session_state.pop("quiz_last_results", None)
         st.rerun()
 
 # ============================================================================

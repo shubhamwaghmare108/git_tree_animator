@@ -1005,3 +1005,12 @@ def test_quiz_bank_has_valid_answers():
         assert 0 <= quiz["answer"] < len(quiz["options"])
         assert quiz["question"]
         assert quiz["explanation"]
+
+
+def test_quiz_scenarios_execute_without_setup_errors():
+    from ui.quiz import QUIZZES, run_quiz_scenario
+
+    for quiz in QUIZZES:
+        repo, results = run_quiz_scenario(quiz)
+        assert repo.state.commits
+        assert all(result["success"] for result in results)
