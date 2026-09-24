@@ -338,18 +338,20 @@ class GitCommandExecutor:
         if not state.branches:
             raise GitCommandError("Not a git repository")
         
-        # Parse -m flag
-        if not args or args[0] != "-m":
+        # Parse commit options independently of their order.
+        # The educational CLI supports -m <message> and --allow-empty.
+        if not args:
             raise GitCommandError('Usage: git commit -m "message"')
-        
-        if len(args) < 2:
-            raise GitCommandError("Commit message cannot be empty")
 
-        allow_empty = "--allow-empty" in args[1:]
-        message_parts = [arg for arg in args[1:] if arg != "--allow-empty"]
-        if not message_parts:
-            raise GitCommandError("Commit message cannot be empty")
+        allow_empty = "--allow-empty" in args
+        filtered = [arg for arg in args if arg != "--allow-empty"]
+        if not filtered or filtered[0] != "-m" or len(filtered) < 2:
+            raise GitCommandError('Usage: git commit -m "message" [--allow-empty]')
+
+        message_parts = filtered[1:]
         message = " ".join(message_parts).strip('"').strip("'")
+        if not message:
+            raise GitCommandError("Commit message cannot be empty")
         
         # Get current branch
         if state.merge_in_progress:
