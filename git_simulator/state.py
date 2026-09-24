@@ -113,6 +113,9 @@ class GitState:
     reflog: List[ReflogEntry] = field(default_factory=list)
     
     timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
+    merge_in_progress: bool = False
+    merge_head_sha: Optional[str] = None
+    conflict_files: Set[str] = field(default_factory=set)
     
     def copy(self) -> "GitState":
         """Create a deep copy of state."""
@@ -134,6 +137,9 @@ class GitState:
             remotes=deepcopy(self.remotes),
             reflog=list(self.reflog),
             timestamp=int(datetime.now().timestamp()),
+            merge_in_progress=self.merge_in_progress,
+            merge_head_sha=self.merge_head_sha,
+            conflict_files=self.conflict_files.copy(),
         )
     
     def get_head_commit_sha(self) -> Optional[str]:

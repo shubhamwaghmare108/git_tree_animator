@@ -538,3 +538,65 @@ class TestThreeWayMerge:
         head = state.get_head_commit_sha()
         assert "keep.txt" not in state.commits[head].tree
         assert state.commits[head].tree["other.txt"] == "main"
+
+
+class TestMergeConflictWorkflow:
+    """Tests for interactive conflict resolution."""
+
+    def _commit_file(self, repo, filename, content, message):
+        repo.set_working_file(filename, content)
+        repo.execute_command("git add .")
+        success, _, _ = repo.execute_command(f'git commit -m "{message}"')
+        assert success
+
+    def test_conflicting_merge_waits_for_resolution(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "shared.txt", "base", "base")
+        repo.execute_command("git switch -c feature")
+        self._commit_file(repo, "shared.txt", "feature", "feature")
+        repo.execute_command("git switch main")
+        self._commit_file(repo, "shared.txt", "main", "main")
+
+        success, msg, state = repo.execute_command("git merge feature")
+        assert success
+        assert state.merge_in_progress
+        assert "shared.txt" in state.conflict_files
+        assert state.get_head_commit_sha() != state.merge_head_sha
+
+    def test_resolved_conflict_can_continue(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "shared.txt", "base", "base")
+        repo.execute_command("git switch -c feature")
+        self._commit_file(repo, "shared.txt", "feature", "feature")
+        repo.execute_command("git switch main")
+        self._commit_file(repo, "shared.txt", "main", "main")
+        repo.execute_command("git merge feature")
+
+        repo.set_working_file("shared.txt", "resolved")
+        success, _, state = repo.execute_command("git add .")
+        assert success
+        assert not state.conflict_files
+
+        success, _, state = repo.execute_command("git merge --continue")
+        assert success
+        assert not state.merge_in_progress
+        assert state.commits[state.get_head_commit_sha()].tree["shared.txt"] == "resolved"
+        assert len(state.commits[state.get_head_commit_sha()].parents) == 2
+
+    def test_merge_abort_clears_conflict_state(self):
+        repo = GitRepository()
+        repo.execute_command("git init")
+        self._commit_file(repo, "shared.txt", "base", "base")
+        repo.execute_command("git switch -c feature")
+        self._commit_file(repo, "shared.txt", "feature", "feature")
+        repo.execute_command("git switch main")
+        self._commit_file(repo, "shared.txt", "main", "main")
+        repo.execute_command("git merge feature")
+
+        success, _, state = repo.execute_command("git merge --abort")
+        assert success
+        assert not state.merge_in_progress
+        assert not state.conflict_files
+        assert not state.working_tree.has_changes()
