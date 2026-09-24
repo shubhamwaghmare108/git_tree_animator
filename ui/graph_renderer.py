@@ -151,6 +151,23 @@ def render_git_graph(state: GitState) -> go.Figure:
                     borderpad=3,
                 )
 
+    # Add tag labels.
+    for tag_name, tag_ptr in state.tags.items():
+        if tag_ptr.target_sha in positions:
+            x, y = positions[tag_ptr.target_sha]
+            label = f"{tag_name}" + (" (annotated)" if tag_ptr.annotated else "")
+            fig.add_annotation(
+                x=x - 0.35,
+                y=y + 0.05,
+                text=f"<b>🏷 {label}</b>",
+                showarrow=False,
+                font=dict(size=9, color="darkorange", family="monospace"),
+                bgcolor="rgba(255, 230, 180, 0.5)",
+                bordercolor="darkorange",
+                borderwidth=1,
+                borderpad=3,
+            )
+
     # Add HEAD label
     if not state.head_is_detached:
         if state.head in state.branches:
