@@ -207,6 +207,44 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# REMOTE SYNCHRONIZATION
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🌐 Remote Repository")
+if st.session_state.repo.state.remote_urls:
+    for remote_name, url in sorted(st.session_state.repo.state.remote_urls.items()):
+        st.caption(f"**{remote_name}** → {url}")
+        tracking = st.session_state.repo.state.remotes.get(remote_name, {})
+        server = st.session_state.repo.state.remote_servers.get(remote_name, {})
+        remote_cols = st.columns([1, 1, 1])
+        with remote_cols[0]:
+            if st.button(f"⬇️ Fetch {remote_name}", key=f"fetch_{remote_name}"):
+                success, message, _ = st.session_state.repo.execute_command(f"git fetch {remote_name}")
+                st.error(message) if not success else st.success(message)
+                st.rerun()
+        with remote_cols[1]:
+            if st.button(f"⬆️ Push current branch", key=f"push_{remote_name}"):
+                branch = st.session_state.repo.state.head
+                success, message, _ = st.session_state.repo.execute_command(f"git push {remote_name} {branch}")
+                st.error(message) if not success else st.success(message)
+                st.rerun()
+        with remote_cols[2]:
+            if st.button(f"🔄 Pull {remote_name}", key=f"pull_{remote_name}"):
+                branch = st.session_state.repo.state.head
+                success, message, _ = st.session_state.repo.execute_command(f"git pull {remote_name} {branch}")
+                st.error(message) if not success else st.success(message)
+                st.rerun()
+
+        if tracking:
+            st.write("**Local remote-tracking refs:**")
+            st.code("\n".join(f"{remote_name}/{n} -> {p.target_sha[:7]}" for n, p in sorted(tracking.items())))
+        elif server:
+            st.caption("Remote has refs; run fetch to update local remote-tracking refs.")
+else:
+    st.info("No remotes configured. Try `git remote add origin https://example.com/student/demo.git`.")
+
+# ============================================================================
 # DETACHED HEAD / RECOVERY
 # ============================================================================
 
@@ -527,6 +565,10 @@ def _get_command_explanation(command: str) -> str:
         "git reflog": "**git reflog** shows the reference logs - a record of all HEAD movements. Useful for recovering lost commits!",
         
         "git detach": "**Detached HEAD** means HEAD points directly to a commit instead of a branch. New commits are not advanced through a branch pointer.",
+        "git remote": "**git remote** names a remote repository. In this simulator, the remote is an in-memory teaching model.",
+        "git push": "**git push** sends the current local branch pointer to the simulated remote. The remote branch moves, while your local branch remains where it was.",
+        "git fetch": "**git fetch** refreshes local remote-tracking references without changing your current branch.",
+        "git pull": "**git pull** fetches the remote and then fast-forwards the current branch when the histories are compatible.",
     }
     
     for cmd_pattern, explanation in explanations.items():
