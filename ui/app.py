@@ -629,6 +629,41 @@ if missions:
             st.rerun()
 
 # ============================================================================
+# GIT SANDBOX WORKSPACE
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🧪 Git Sandbox")
+st.caption("Work with simulated files directly. Nothing touches your real computer filesystem.")
+
+sandbox_col1, sandbox_col2 = st.columns([1, 2])
+with sandbox_col1:
+    sandbox_files = sorted(set(st.session_state.repo.state.working_tree.modified_files) | set(st.session_state.repo.state.working_tree.new_files))
+    sandbox_file = st.selectbox("File", ["<new file>"] + sandbox_files, key="sandbox_file")
+    sandbox_name = st.text_input("Filename", value="" if sandbox_file == "<new file>" else sandbox_file, key="sandbox_name")
+with sandbox_col2:
+    sandbox_content = ""
+    if sandbox_file != "<new file>":
+        sandbox_content = (st.session_state.repo.state.working_tree.modified_files.get(sandbox_file) or st.session_state.repo.state.working_tree.new_files.get(sandbox_file) or "")
+    sandbox_text = st.text_area("Content", value=sandbox_content, height=160, key="sandbox_content")
+    s1, s2 = st.columns(2)
+    with s1:
+        if st.button("💾 Save file", use_container_width=True):
+            if sandbox_name.strip():
+                st.session_state.repo.set_working_file(sandbox_name.strip(), sandbox_text)
+                st.success(f"Saved {sandbox_name.strip()} to the simulated working tree.")
+                st.rerun()
+            else:
+                st.warning("Enter a filename.")
+    with s2:
+        if st.button("🗑️ Delete file", use_container_width=True, disabled=sandbox_file == "<new file>"):
+            st.session_state.repo.delete_working_file(sandbox_file)
+            st.success(f"Deleted {sandbox_file} from the simulated working tree.")
+            st.rerun()
+
+st.info("Sandbox workflow: edit → git add . → inspect staging → git commit. Use the command terminal below for the Git operations.")
+
+# ============================================================================
 # COMMAND INPUT & EXECUTION
 # ============================================================================
 
