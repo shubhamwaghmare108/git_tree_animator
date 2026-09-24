@@ -11,6 +11,7 @@ from ui.graph_renderer import render_git_graph, render_git_animation
 from ui.file_display import render_staging_area, render_working_tree, render_repository_state, render_commit_details
 from ui.quiz import get_quizzes, run_quiz_scenario
 from ui.command_challenges import get_command_challenges, check_command
+from ui.missions import get_missions, command_matches, mission_status
 
 
 # Page configuration
@@ -565,6 +566,66 @@ if challenges:
     with c3:
         if st.button("Next command challenge", key="next_command_challenge"):
             st.session_state.command_challenge_attempts += 1
+            st.rerun()
+
+# ============================================================================
+# GIT MISSION MODE
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🗺️ Git Mission Mode")
+st.caption("Complete a multi-step repository task. Each command is checked before you advance to the next checkpoint.")
+
+mission_level = st.selectbox("Mission level", ["All", "Beginner", "Intermediate"], key="mission_level")
+missions = get_missions(mission_level)
+if "mission_index" not in st.session_state: st.session_state.mission_index = 0
+if "mission_step" not in st.session_state: st.session_state.mission_step = 0
+if "mission_score" not in st.session_state: st.session_state.mission_score = 0
+if "mission_repo" not in st.session_state: st.session_state.mission_repo = GitRepository()
+
+if missions:
+    mission = missions[st.session_state.mission_index % len(missions)]
+    if st.session_state.mission_step == 0 and not st.session_state.mission_repo.history:
+        for setup_command in mission["setup"]:
+            st.session_state.mission_repo.execute_command(setup_command)
+    step_index = min(st.session_state.mission_step, len(mission["steps"]) - 1)
+    step = mission["steps"][step_index]
+    st.markdown(f"**{mission['level']} · {mission['title']}**")
+    st.write(mission["brief"])
+    st.progress(st.session_state.mission_step / len(mission["steps"]))
+    st.markdown(f"**Checkpoint {step_index + 1}/{len(mission['steps'])}:** {step['goal']}")
+    command = st.text_input("Command", placeholder="git ...", key=f"mission_cmd_{st.session_state.mission_index}_{st.session_state.mission_step}")
+    if st.button("Execute checkpoint", key=f"mission_exec_{st.session_state.mission_index}_{st.session_state.mission_step}"):
+        if command_matches(command, step["accepted"]):
+            success, output, _ = st.session_state.mission_repo.execute_command(command if command.startswith("git ") else "git " + command)
+            if success:
+                st.session_state.mission_step += 1
+                st.session_state.mission_score += 1
+                st.success("✅ Checkpoint complete!")
+                st.write(output)
+                st.rerun()
+            else:
+                st.error(output)
+        else:
+            st.error("❌ That command does not satisfy this checkpoint.")
+            st.info(f"Hint: {step['hint']}")
+
+    status = mission_status(mission, st.session_state.mission_repo, st.session_state.mission_step)
+    m1, m2, m3 = st.columns(3)
+    with m1: st.metric("Checkpoint score", st.session_state.mission_score)
+    with m2: st.metric("Progress", f"{status['completed_steps']}/{status['total_steps']}")
+    with m3:
+        if st.button("Reset mission", key="reset_mission"):
+            st.session_state.mission_step = 0
+            st.session_state.mission_repo = GitRepository()
+            st.rerun()
+    if status["complete"]:
+        st.success(f"🏁 Mission complete — {mission['success']}")
+        st.plotly_chart(render_git_graph(st.session_state.mission_repo.state), use_container_width=True)
+        if st.button("Next mission", key="next_mission"):
+            st.session_state.mission_index += 1
+            st.session_state.mission_step = 0
+            st.session_state.mission_repo = GitRepository()
             st.rerun()
 
 # ============================================================================

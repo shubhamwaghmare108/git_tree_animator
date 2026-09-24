@@ -1025,3 +1025,16 @@ def test_command_challenges_have_valid_solutions():
         correct, repo, _ = check_command(challenge, challenge["accepted"][0])
         assert correct
         assert repo.state.commits
+
+
+def test_missions_have_valid_checkpoints():
+    from ui.missions import MISSIONS
+
+    assert MISSIONS
+    for mission in MISSIONS:
+        assert mission["setup"]
+        assert mission["steps"]
+        for step in mission["steps"]:
+            assert step["goal"]
+            assert step["accepted"]
+            assert step["hint"]
