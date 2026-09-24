@@ -98,7 +98,7 @@ class ReflogEntry:
 
 @dataclass
 class GitState:
-    """Complete, immutable snapshot of repository state."""
+    """Complete repository snapshot at a point in the simulator history."""
     
     commits: Dict[str, Commit] = field(default_factory=dict)  # sha -> Commit
     branches: Dict[str, BranchPointer] = field(default_factory=dict)  # name -> BranchPointer
