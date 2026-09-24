@@ -327,8 +327,12 @@ class GitCommandExecutor:
         
         if len(args) < 2:
             raise GitCommandError("Commit message cannot be empty")
-        
-        message = " ".join(args[1:]).strip('"').strip("'")
+
+        allow_empty = "--allow-empty" in args[1:]
+        message_parts = [arg for arg in args[1:] if arg != "--allow-empty"]
+        if not message_parts:
+            raise GitCommandError("Commit message cannot be empty")
+        message = " ".join(message_parts).strip('"').strip("'")
         
         # Get current branch
         if state.merge_in_progress:
@@ -363,6 +367,11 @@ class GitCommandExecutor:
             commit_tree[filename] = content
         for filename in new_state.index.staged_deletions:
             commit_tree.pop(filename, None)
+
+        # A normal commit must contain an index change. Empty commits are
+        # allowed only when explicitly requested with --allow-empty.
+        if not allow_empty and not new_state.index.staged_content and not new_state.index.staged_deletions:
+            raise GitCommandError("nothing to commit (use --allow-empty to create an empty commit)")
 
         # Create new commit
         new_sha = self._generate_sha(message, parent_sha)
