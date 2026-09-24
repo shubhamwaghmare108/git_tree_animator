@@ -1550,26 +1550,3 @@ class GitCommandExecutor:
         
         return None
     
-    def _is_ancestor(self, ancestor_sha: str, descendant_sha: str, commits: dict) -> bool:
-        """Check if ancestor_sha is an ancestor of descendant_sha."""
-        visited = set()
-        
-        def walk(sha: str) -> bool:
-            if not sha or sha in visited:
-                return False
-            visited.add(sha)
-            
-            if sha == ancestor_sha:
-                return True
-            
-            if sha not in commits:
-                return False
-            
-            commit = commits[sha]
-            for parent_sha in commit.parents:
-                if walk(parent_sha):
-                    return True
-            
-            return False
-        
-        return walk(descendant_sha)
