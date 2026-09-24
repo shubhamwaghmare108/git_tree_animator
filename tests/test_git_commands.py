@@ -1014,3 +1014,14 @@ def test_quiz_scenarios_execute_without_setup_errors():
         repo, results = run_quiz_scenario(quiz)
         assert repo.state.commits
         assert all(result["success"] for result in results)
+
+
+def test_command_challenges_have_valid_solutions():
+    from ui.command_challenges import COMMAND_CHALLENGES, check_command
+
+    assert COMMAND_CHALLENGES
+    for challenge in COMMAND_CHALLENGES:
+        assert challenge["accepted"]
+        correct, repo, _ = check_command(challenge, challenge["accepted"][0])
+        assert correct
+        assert repo.state.commits
