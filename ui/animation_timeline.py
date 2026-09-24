@@ -86,3 +86,33 @@ def build_timeline(history: List[tuple]) -> List[TimelineEvent]:
         )
         previous = state
     return events
+
+
+
+def state_at_step(history, step: int):
+    """Return a copied historical state; step 0 is the initial empty state."""
+    if step < 0 or step > len(history):
+        raise ValueError(f"step must be between 0 and {len(history)}")
+    if step == 0:
+        return GitState()
+    return history[step - 1][1].copy()
+
+
+def state_diff(before: GitState, after: GitState) -> dict:
+    """Summarize visible repository changes between two timeline states."""
+    before_head = before.get_head_commit_sha()
+    after_head = after.get_head_commit_sha()
+    before_tree = before.commits[before_head].tree if before_head in before.commits else {}
+    after_tree = after.commits[after_head].tree if after_head in after.commits else {}
+    return {
+        "commits_added": len(set(after.commits) - set(before.commits)),
+        "commits_removed": len(set(before.commits) - set(after.commits)),
+        "branches_added": sorted(set(after.branches) - set(before.branches)),
+        "branches_removed": sorted(set(before.branches) - set(after.branches)),
+        "tags_added": sorted(set(after.tags) - set(before.tags)),
+        "tags_removed": sorted(set(before.tags) - set(after.tags)),
+        "files_added": sorted(set(after_tree) - set(before_tree)),
+        "files_removed": sorted(set(before_tree) - set(after_tree)),
+        "working_changes_delta": _working_changes(after) - _working_changes(before),
+        "staged_delta": _staged_changes(after) - _staged_changes(before),
+    }
