@@ -507,3 +507,8 @@ Mission Mode combines multiple command challenges into a checkpoint-based task. 
 ### Git Sandbox Workspace
 
 The Streamlit app provides a dedicated simulated filesystem editor. Learners can create, edit, and delete files without touching the host filesystem, then use normal Git commands to stage and commit those changes. The resulting file snapshots are visible in the repository state and commit graph.
+
+
+### State-validated missions
+
+Mission completion is now based on the actual simulated repository state, not simply on whether the learner entered the expected command strings. Missions can validate branches, tags, stashes, working-tree files, and other repository properties after the workflow is completed.
