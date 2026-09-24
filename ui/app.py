@@ -1,0 +1,326 @@
+"""
+Git Tree Animator - Main Streamlit Application
+
+Run with: streamlit run ui/app.py
+"""
+
+import streamlit as st
+from git_simulator.repository import GitRepository
+from git_simulator.state import WorkingTreeState
+from ui.graph_renderer import render_git_graph
+from ui.file_display import render_staging_area, render_working_tree, render_repository_state, render_commit_details
+
+
+# Page configuration
+st.set_page_config(
+    page_title="Git Tree Animator",
+    page_icon="🌳",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS
+st.markdown("""
+<style>
+    .command-success { color: #2ecc71; font-family: monospace; }
+    .command-error { color: #e74c3c; font-family: monospace; }
+    .command-input { font-family: monospace; }
+    .legend {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# PAGE TITLE
+# ============================================================================
+
+st.title("🌳 Git Tree Animator")
+st.markdown("*Visually understand how Git commands affect your repository*")
+
+# ============================================================================
+# SIDEBAR CONFIGURATION
+# ============================================================================
+
+with st.sidebar:
+    st.markdown("## ⚙️ Settings")
+    
+    education_mode = st.selectbox(
+        "Education Mode",
+        ["Beginner", "Intermediate", "Advanced"],
+        help="Beginner: Commits, branches, HEAD | Intermediate: + merge, reset, restore | Advanced: + rebase, remote, reflog"
+    )
+    
+    animation_speed = st.slider(
+        "Animation Speed",
+        0.5, 4.0, 1.0, 0.5,
+        help="Speed multiplier for animations"
+    )
+    
+    st.markdown("---")
+    st.markdown("## 📚 Lessons")
+    
+    lesson_col1, lesson_col2 = st.columns(2)
+    
+    with lesson_col1:
+        if st.button("📖 Basic Git", use_container_width=True):
+            st.session_state.lesson_commands = [
+                "git init",
+                "git add .",
+                "git commit -m \"Initial commit\"",
+            ]
+            st.session_state.lesson_name = "Basic Git"
+    
+    with lesson_col2:
+        if st.button("📖 Branching", use_container_width=True):
+            st.session_state.lesson_commands = [
+                "git init",
+                "git commit -m \"Main commit\"",
+                "git branch feature",
+                "git switch feature",
+                "git commit -m \"Feature work\"",
+            ]
+            st.session_state.lesson_name = "Branching"
+    
+    if st.button("📖 Merge", use_container_width=True):
+        st.session_state.lesson_commands = [
+            "git init",
+            "git commit -m \"Initial\"",
+            "git branch feature",
+            "git switch feature",
+            "git commit -m \"Feature 1\"",
+            "git commit -m \"Feature 2\"",
+            "git switch main",
+            "git merge feature",
+        ]
+        st.session_state.lesson_name = "Merge"
+    
+    if st.button("📖 Reset", use_container_width=True):
+        st.session_state.lesson_commands = [
+            "git init",
+            "git commit -m \"Commit 1\"",
+            "git commit -m \"Commit 2\"",
+            "git reset --soft HEAD~1",
+        ]
+        st.session_state.lesson_name = "Reset"
+    
+    st.markdown("---")
+    
+    if st.button("🔄 Clear Everything", use_container_width=True):
+        st.session_state.repo = GitRepository()
+        st.session_state.lesson_commands = None
+        st.rerun()
+
+# ============================================================================
+# INITIALIZE SESSION STATE
+# ============================================================================
+
+if "repo" not in st.session_state:
+    st.session_state.repo = GitRepository()
+
+if "lesson_commands" not in st.session_state:
+    st.session_state.lesson_commands = None
+
+if "lesson_name" not in st.session_state:
+    st.session_state.lesson_name = None
+
+# ============================================================================
+# MAIN CONTENT AREA
+# ============================================================================
+
+# Show lesson if loaded
+if st.session_state.lesson_commands:
+    st.info(f"📖 **Lesson**: {st.session_state.lesson_name}")
+    st.markdown("**Commands to execute:**")
+    for i, cmd in enumerate(st.session_state.lesson_commands, 1):
+        status = "✓" if i <= len(st.session_state.repo.history) else "○"
+        st.code(f"{status} {cmd}")
+
+# Main layout: Graph + State
+col_graph, col_state = st.columns([2.5, 1.5])
+
+with col_graph:
+    st.markdown("### 📊 Commit Graph")
+    fig = render_git_graph(st.session_state.repo.state)
+    st.plotly_chart(fig, use_container_width=True, key="git_graph")
+
+with col_state:
+    st.markdown("### 📋 Repository State")
+    render_repository_state(st.session_state.repo.state)
+    
+    st.markdown("#### Current Commit")
+    render_commit_details(st.session_state.repo.state)
+    
+    st.markdown("#### Staging Area")
+    render_staging_area(st.session_state.repo.state.index)
+    
+    st.markdown("#### Working Directory")
+    render_working_tree(st.session_state.repo.state.working_tree)
+
+# ============================================================================
+# COMMAND INPUT & EXECUTION
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 💻 Terminal")
+
+col_cmd, col_run, col_clear = st.columns([2, 0.8, 0.8])
+
+with col_cmd:
+    command_input = st.text_input(
+        label="Command",
+        placeholder="git commit -m 'message'",
+        key="cmd_input",
+        label_visibility="collapsed"
+    )
+
+with col_run:
+    if st.button("▶ Run", use_container_width=True):
+        if command_input:
+            full_cmd = f"git {command_input}" if not command_input.startswith("git ") else command_input
+            success, message, new_state = st.session_state.repo.execute_command(full_cmd)
+            
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
+            
+            st.rerun()
+
+with col_clear:
+    if st.button("🔄 Reset", use_container_width=True):
+        st.session_state.repo = GitRepository()
+        st.session_state.lesson_commands = None
+        st.rerun()
+
+# ============================================================================
+# COMMAND HISTORY TIMELINE
+# ============================================================================
+
+if st.session_state.repo.history:
+    st.markdown("---")
+    st.markdown("### 📜 Command History")
+    
+    history_cols = st.columns([1, 4, 1, 1])
+    
+    with history_cols[0]:
+        st.markdown("**#**")
+    with history_cols[1]:
+        st.markdown("**Command**")
+    with history_cols[2]:
+        st.markdown("**Revert**")
+    with history_cols[3]:
+        st.markdown("**Details**")
+    
+    for i, (cmd, state) in enumerate(st.session_state.repo.history):
+        h_col1, h_col2, h_col3, h_col4 = st.columns([1, 4, 1, 1])
+        
+        with h_col1:
+            st.markdown(f"**{i+1}**")
+        
+        with h_col2:
+            st.code(cmd)
+        
+        with h_col3:
+            if st.button("↶", key=f"revert_{i}", help=f"Reset to step {i+1}"):
+                if st.session_state.repo.reset_to_step(i):
+                    st.success(f"Reset to step {i+1}")
+                    st.rerun()
+        
+        with h_col4:
+            # Show number of commits at this step
+            num_commits = len(state.commits)
+            st.markdown(f"{num_commits} commits")
+
+# ============================================================================
+# EXPLANATION PANEL
+# ============================================================================
+
+if st.session_state.repo.history:
+    st.markdown("---")
+    st.markdown("### 📚 Command Explanation")
+    
+    last_cmd = st.session_state.repo.history[-1][0]
+    explanation = _get_command_explanation(last_cmd)
+    
+    st.info(explanation)
+else:
+    st.markdown("---")
+    st.info("💡 Execute a command to see its explanation here.")
+
+# ============================================================================
+# LEGEND
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🔑 Legend")
+
+leg_col1, leg_col2, leg_col3 = st.columns(3)
+
+with leg_col1:
+    st.markdown("""
+    **Commit Visualization**
+    - ◆ Current commit (gold)
+    - ● Other commits (blue)
+    """)
+
+with leg_col2:
+    st.markdown("""
+    **References**
+    - 🟢 Branch pointer
+    - 🔴 HEAD pointer
+    """)
+
+with leg_col3:
+    st.markdown("""
+    **File State**
+    - ✓ Staged files
+    - ~ Modified files
+    - + New files
+    - – Deleted files
+    """)
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def _get_command_explanation(command: str) -> str:
+    """Get educational explanation for a Git command."""
+    
+    explanations = {
+        "git init": "**git init** creates a new Git repository. It initializes the `.git` directory and creates the default `main` branch.",
+        
+        "git add": "**git add** stages changes for commit. Files in the staging area will be included in the next commit.",
+        
+        "git commit": "**git commit** creates a new snapshot (commit) of your staged changes. Each commit has a unique SHA identifier and a parent commit.",
+        
+        "git branch": "**git branch** creates a new branch. A branch is just a pointer to a commit, allowing you to work on multiple features simultaneously.",
+        
+        "git switch": "**git switch** moves HEAD to a different branch. This updates your working directory to match the commit pointed to by that branch.",
+        
+        "git checkout": "**git checkout** is a legacy command that does the same thing as git switch.",
+        
+        "git merge": "**git merge** combines commits from another branch into the current branch. If the target branch contains commits not in the current branch, a merge commit is created.",
+        
+        "git reset": "**git reset** moves the current branch pointer to a different commit. Different modes affect the staging area and working directory differently.",
+        
+        "git restore": "**git restore** discards changes in the working directory or unstages files without moving branch pointers.",
+        
+        "git log": "**git log** displays the commit history. Add `--oneline` for a compact view.",
+        
+        "git status": "**git status** shows the current state: which branch you're on, staged changes, and modifications.",
+        
+        "git reflog": "**git reflog** shows the reference logs - a record of all HEAD movements. Useful for recovering lost commits!",
+    }
+    
+    for cmd_pattern, explanation in explanations.items():
+        if cmd_pattern in command:
+            return explanation
+    
+    return "Execute a Git command to learn what it does! 🚀"
