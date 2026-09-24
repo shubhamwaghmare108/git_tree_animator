@@ -267,59 +267,69 @@ class GitCommandExecutor:
         return new_state, f"Added {staged_count} files to index"
     
     def cmd_restore(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
-        """git restore [--staged] <file> - Restore files."""
+        """git restore [--staged] <file>... - Restore one or more files."""
         if not args:
-            raise GitCommandError("Usage: git restore [--staged] <file>")
-        
+            raise GitCommandError("Usage: git restore [--staged] <file>...")
+
         new_state = state.copy()
-        
-        if "--staged" in args:
-            # Unstage file
-            filename = args[1] if len(args) > 1 else args[0]
-            if filename in new_state.index.staged_files:
-                staged_content = new_state.index.staged_content.pop(filename, None)
-                del new_state.index.staged_files[filename]
-                new_state.index.staged_deletions.discard(filename)
-                head_tree = self._head_tree(state)
-                if staged_content is not None:
+        staged_mode = "--staged" in args
+        filenames = [arg for arg in args if arg != "--staged"]
+        if not filenames:
+            raise GitCommandError("Usage: git restore [--staged] <file>...")
+
+        restored = []
+        head_tree = self._head_tree(state)
+
+        for filename in filenames:
+            if staged_mode:
+                if filename in new_state.index.staged_files:
+                    staged_content = new_state.index.staged_content.pop(filename, None)
+                    del new_state.index.staged_files[filename]
+                    new_state.index.staged_deletions.discard(filename)
+                    if staged_content is not None:
+                        if filename in head_tree:
+                            new_state.working_tree.modified_files[filename] = staged_content
+                        else:
+                            new_state.working_tree.new_files[filename] = staged_content
+                    restored.append(filename)
+                elif filename in new_state.index.staged_deletions:
+                    new_state.index.staged_deletions.discard(filename)
                     if filename in head_tree:
-                        new_state.working_tree.modified_files[filename] = staged_content
-                    else:
-                        new_state.working_tree.new_files[filename] = staged_content
-                return new_state, f"Unstaged '{filename}'"
-            elif filename in new_state.index.staged_deletions:
-                new_state.index.staged_deletions.discard(filename)
-                head_tree = self._head_tree(state)
-                if filename in head_tree:
-                    new_state.working_tree.deleted_files.add(filename)
-                return new_state, f"Unstaged '{filename}'"
-            else:
-                raise GitCommandError(f"pathspec '{filename}' did not match any files")
-        else:
-            # Restore the working tree from the index. If the path is staged,
-            # keep the staged snapshot and discard only the working-tree delta.
-            filename = args[0]
+                        new_state.working_tree.deleted_files.add(filename)
+                    restored.append(filename)
+                else:
+                    raise GitCommandError(f"pathspec '{filename}' did not match any files")
+                continue
+
+            # Restore the working tree from the index when the path is staged.
             if filename in new_state.index.staged_files:
                 new_state.working_tree.modified_files.pop(filename, None)
                 new_state.working_tree.new_files.pop(filename, None)
                 new_state.working_tree.deleted_files.discard(filename)
-                return new_state, f"Restored '{filename}' from index"
+                restored.append(filename)
+                continue
             if filename in new_state.index.staged_deletions:
                 new_state.working_tree.modified_files.pop(filename, None)
                 new_state.working_tree.new_files.pop(filename, None)
                 new_state.working_tree.deleted_files.discard(filename)
-                return new_state, f"Restored '{filename}' from index"
+                restored.append(filename)
+                continue
             if filename in new_state.working_tree.modified_files:
                 del new_state.working_tree.modified_files[filename]
-                return new_state, f"Restored '{filename}'"
-            elif filename in new_state.working_tree.new_files:
+                restored.append(filename)
+                continue
+            if filename in new_state.working_tree.new_files:
                 del new_state.working_tree.new_files[filename]
-                return new_state, f"Restored '{filename}'"
-            elif filename in new_state.working_tree.deleted_files:
+                restored.append(filename)
+                continue
+            if filename in new_state.working_tree.deleted_files:
                 new_state.working_tree.deleted_files.discard(filename)
-                return new_state, f"Restored '{filename}'"
-            else:
-                raise GitCommandError(f"pathspec '{filename}' did not match any files")
+                restored.append(filename)
+                continue
+            raise GitCommandError(f"pathspec '{filename}' did not match any files")
+
+        action = "Unstaged" if staged_mode else "Restored"
+        return new_state, f"{action} {', '.join(repr(filename) for filename in restored)}"
     
     # ========== Commit Commands ==========
     
