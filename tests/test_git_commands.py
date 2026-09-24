@@ -1411,3 +1411,24 @@ def test_restore_file_clears_worktree_deletion_but_keeps_staged_deletion():
     assert success, message
     assert "app.py" in state.index.staged_deletions
     assert not state.working_tree.has_changes()
+
+
+def test_merge_rejects_local_changes_before_starting_operation():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "base")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "base"')
+    repo.execute_command("git switch -c feature")
+    repo.set_working_file("feature.txt", "feature")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "feature"')
+    repo.execute_command("git switch main")
+    repo.set_working_file("local.txt", "local")
+
+    success, message, state = repo.execute_command("git merge feature")
+
+    assert not success
+    assert "local changes" in message
+    assert not state.merge_in_progress
+    assert state.working_tree.new_files["local.txt"] == "local"
