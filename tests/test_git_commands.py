@@ -1358,3 +1358,21 @@ def test_stash_apply_rejects_overlapping_local_changes():
     assert "local changes would be overwritten" in message
     assert state.working_tree.modified_files["app.py"] == "local"
     assert len(state.stashes) == 1
+
+
+def test_state_copy_preserves_existing_stashes():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+    repo.set_working_file("app.py", "v2")
+    success, _, _ = repo.execute_command("git stash")
+    assert success
+
+    repo.set_working_file("notes.txt", "local")
+    copied = repo.state.copy()
+
+    assert len(copied.stashes) == 1
+    assert copied.stashes[0].name == "stash@{0}"
+    assert copied.stashes[0].modified_files == {"app.py": "v2"}
