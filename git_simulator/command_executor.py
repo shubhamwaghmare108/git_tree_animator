@@ -151,6 +151,8 @@ class GitCommandExecutor:
         message = " ".join(args[1:]).strip('"').strip("'")
         
         # Get current branch
+        if state.merge_in_progress:
+            raise GitCommandError("You are in the middle of a merge. Resolve conflicts and use 'git merge --continue'.")
         if state.head_is_detached:
             raise GitCommandError(
                 f"Not currently on any branch.\n"
@@ -506,7 +508,63 @@ class GitCommandExecutor:
         return new_state, f"HEAD is now at {target_sha[:7]} {target_commit.message}"
     
     # ========== Merge Commands ==========
-    
+
+    def cmd_merge_abort(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git merge --abort - cancel an in-progress merge."""
+        if not state.merge_in_progress:
+            raise GitCommandError("There is no merge to abort")
+        new_state = state.copy()
+        new_state.working_tree = WorkingTreeState()
+        new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
+        new_state.merge_in_progress = False
+        new_state.merge_head_sha = None
+        new_state.conflict_files.clear()
+        return new_state, "Merge aborted; working tree restored to HEAD"
+
+    def cmd_merge_continue(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git merge --continue - finish a conflict-resolved merge."""
+        if not state.merge_in_progress or not state.merge_head_sha:
+            raise GitCommandError("There is no merge to continue")
+        if state.conflict_files:
+            raise GitCommandError("Merge conflicts remain: " + ", ".join(sorted(state.conflict_files)))
+        if not state.index.staged_files and not state.index.staged_deletions:
+            raise GitCommandError("Stage the resolved files before continuing the merge")
+
+        current_sha = state.get_head_commit_sha()
+        merge_sha = state.merge_head_sha
+        if not current_sha or merge_sha not in state.commits:
+            raise GitCommandError("Cannot continue merge: missing merge heads")
+
+        new_state = state.copy()
+        tree = dict(new_state.commits[current_sha].tree)
+        for filename, content in new_state.index.staged_content.items():
+            tree[filename] = content
+        for filename in new_state.index.staged_deletions:
+            tree.pop(filename, None)
+
+        merge_sha_new = self._generate_sha("merge --continue", current_sha)
+        commit = Commit(
+            sha=merge_sha_new,
+            message=f"Merge branch into {new_state.head}",
+            parents=[current_sha, merge_sha],
+            author="Git Learner",
+            timestamp=int(datetime.now().timestamp()),
+            tree=tree,
+        )
+        new_state.commits[merge_sha_new] = commit
+        new_state.branches[new_state.head] = BranchPointer(new_state.head, merge_sha_new)
+        new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
+        new_state.working_tree = WorkingTreeState()
+        new_state.merge_in_progress = False
+        new_state.merge_head_sha = None
+        new_state.conflict_files.clear()
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="merge", sha=merge_sha_new, message="merge --continue"))
+        return new_state, f"Merge committed as {merge_sha_new[:7]}"
+
     def cmd_merge(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
         """git merge <branch> - Merge a branch."""
         if not args:
@@ -558,13 +616,26 @@ class GitCommandExecutor:
                 current_sha
             )
             
+            merged_tree, conflicts = self._merge_trees(current_sha, merge_sha, new_state)
+
+            if conflicts:
+                new_state.merge_in_progress = True
+                new_state.merge_head_sha = merge_sha
+                new_state.conflict_files = set(conflicts)
+                for filename in conflicts:
+                    new_state.working_tree.modified_files[filename] = merged_tree[filename]
+                return new_state, (
+                    "Automatic merge failed; resolve conflicts, run 'git add .', "
+                    "'git merge --continue'. Conflicts: " + ", ".join(sorted(conflicts))
+                )
+
             merge_commit = Commit(
                 sha=merge_sha_new,
                 message=f"Merge branch '{merge_branch}' into {new_state.head}",
                 parents=[current_sha, merge_sha],
                 author="Git Learner",
                 timestamp=int(datetime.now().timestamp()),
-                tree=self._merge_trees(current_sha, merge_sha, new_state),
+                tree=merged_tree,
             )
             
             new_state.commits[merge_sha_new] = merge_commit
@@ -585,7 +656,7 @@ class GitCommandExecutor:
     # ========== Helper Methods ==========
     
 
-    def _merge_trees(self, current_sha: str, merge_sha: str, state: GitState) -> dict:
+    def _merge_trees(self, current_sha: str, merge_sha: str, state: GitState) -> Tuple[dict, List[str]]:
         """Perform a simplified three-way merge using the common ancestor.
 
         For each path:
@@ -604,6 +675,7 @@ class GitCommandExecutor:
 
         missing = object()
         result = {}
+        conflicts = []
         for filename in set(base) | set(current) | set(incoming):
             base_value = base.get(filename, missing)
             current_value = current.get(filename, missing)
