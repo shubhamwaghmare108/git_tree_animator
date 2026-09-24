@@ -17,6 +17,9 @@ class Commit:
     parents: List[str] = field(default_factory=list)  # Parent commit SHAs
     author: str = "Git Learner"
     timestamp: int = field(default_factory=lambda: int(datetime.now().timestamp()))
+    # Simplified committed tree: filename -> file content. This makes commits
+    # actual snapshots instead of metadata-only graph nodes.
+    tree: Dict[str, str] = field(default_factory=dict)
     
     @property
     def short_sha(self) -> str:
@@ -46,9 +49,14 @@ class BranchPointer:
 
 @dataclass
 class IndexState:
-    """Staging area (index) state."""
+    """Staging area (index) state.
+
+    ``staged_files`` keeps the content hash for compact display, while
+    ``staged_content`` preserves the actual content needed to build a commit tree.
+    """
     
     staged_files: Dict[str, str] = field(default_factory=dict)  # filename -> hash
+    staged_content: Dict[str, str] = field(default_factory=dict)  # filename -> content
     
     def __repr__(self) -> str:
         return f"Index({len(self.staged_files)} files)"
@@ -112,7 +120,10 @@ class GitState:
             branches=deepcopy(self.branches),
             head=self.head,
             head_is_detached=self.head_is_detached,
-            index=IndexState(staged_files=self.index.staged_files.copy()),
+            index=IndexState(
+                staged_files=self.index.staged_files.copy(),
+                staged_content=self.index.staged_content.copy(),
+            ),
             working_tree=WorkingTreeState(
                 modified_files=self.working_tree.modified_files.copy(),
                 new_files=self.working_tree.new_files.copy(),
