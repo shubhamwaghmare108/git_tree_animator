@@ -580,24 +580,81 @@ class GitCommandExecutor:
     
 
     def _merge_trees(self, current_sha: str, merge_sha: str, state: GitState) -> dict:
-        """Create a deterministic educational merge tree.
+        """Perform a simplified three-way merge using the common ancestor.
 
-        Non-conflicting files from the merge side are applied over the current
-        tree. Conflicting files get visible conflict markers.
+        For each path:
+        - if both sides agree, keep that content;
+        - if only the current side changed from the base, keep current;
+        - if only the incoming side changed from the base, take incoming;
+        - if both changed differently, keep conflict markers.
+
+        Missing paths are treated as deleted files. This is intentionally a
+        compact educational model rather than a byte-for-byte Git merge.
         """
+        base_sha = self._find_merge_base(current_sha, merge_sha, state.commits)
+        base = dict(state.commits[base_sha].tree) if base_sha else {}
         current = dict(state.commits[current_sha].tree)
         incoming = dict(state.commits[merge_sha].tree)
-        result = dict(current)
-        for filename, content in incoming.items():
-            if filename not in current or current[filename] == content:
-                result[filename] = content
+
+        missing = object()
+        result = {}
+        for filename in set(base) | set(current) | set(incoming):
+            base_value = base.get(filename, missing)
+            current_value = current.get(filename, missing)
+            incoming_value = incoming.get(filename, missing)
+
+            if current_value == incoming_value:
+                merged = current_value
+            elif current_value == base_value:
+                merged = incoming_value
+            elif incoming_value == base_value:
+                merged = current_value
             else:
-                result[filename] = (
-                    "<<<<<<< current\n" + current[filename] +
-                    "\n=======\n" + content +
-                    "\n>>>>>>> " + state.head
+                current_text = "" if current_value is missing else current_value
+                incoming_text = "" if incoming_value is missing else incoming_value
+                merged = (
+                    "<<<<<<< current\\n" + current_text +
+                    "\\n=======\\n" + incoming_text +
+                    "\\n>>>>>>> incoming"
                 )
+
+            if merged is not missing:
+                result[filename] = merged
+
         return result
+
+    def _find_merge_base(self, first_sha: str, second_sha: str, commits: dict) -> Optional[str]:
+        """Find a nearest common ancestor for two commits."""
+        first_distances = self._ancestor_distances(first_sha, commits)
+        second_distances = self._ancestor_distances(second_sha, commits)
+        common = set(first_distances) & set(second_distances)
+        if not common:
+            return None
+
+        return min(
+            common,
+            key=lambda sha: (
+                first_distances[sha] + second_distances[sha],
+                first_distances[sha],
+                sha,
+            ),
+        )
+
+    def _ancestor_distances(self, start_sha: str, commits: dict) -> dict:
+        """Return minimum parent distance for every reachable ancestor."""
+        distances = {start_sha: 0}
+        queue = [start_sha]
+        while queue:
+            sha = queue.pop(0)
+            distance = distances[sha]
+            commit = commits.get(sha)
+            if not commit:
+                continue
+            for parent_sha in commit.parents:
+                if parent_sha not in distances or distance + 1 < distances[parent_sha]:
+                    distances[parent_sha] = distance + 1
+                    queue.append(parent_sha)
+        return distances
 
     def _generate_sha(self, message: str, parent_sha: Optional[str]) -> str:
         """Generate deterministic SHA for a commit."""
