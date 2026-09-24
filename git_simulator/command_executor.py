@@ -648,10 +648,20 @@ class GitCommandExecutor:
             if conflicts:
                 new_state.rebase_current_commit = original_sha
                 new_state.conflict_files = set(conflicts)
+                current_tree = new_state.commits[current_sha].tree
+                new_files = {
+                    k: v for k, v in merged_tree.items()
+                    if k not in current_tree
+                }
+                modified_files = {
+                    k: v for k, v in merged_tree.items()
+                    if k in current_tree and current_tree[k] != v
+                }
+                deleted_files = set(current_tree) - set(merged_tree)
                 new_state.working_tree = WorkingTreeState(
-                    modified_files={k: v for k, v in merged_tree.items() if k in conflicts},
-                    new_files={},
-                    deleted_files=set(),
+                    modified_files=modified_files,
+                    new_files=new_files,
+                    deleted_files=deleted_files,
                 )
                 return new_state, (
                     f"Rebase paused at {original_sha[:7]} ({original.message}). "
