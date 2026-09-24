@@ -174,10 +174,15 @@ if timeline:
     st.info(event.summary)
     t1, t2, t3, t4 = st.columns(4)
     with t1: st.metric('Commits', f'{event.commits_before} → {event.commits_after}')
-    with t2: st.metric('HEAD', f'{(event.head_before or 'None')[:7]} → {(event.head_after or 'None')[:7]}')
+    with t2:
+        before_head = (event.head_before or 'None')[:7]
+        after_head = (event.head_after or 'None')[:7]
+        st.metric('HEAD', f'{before_head} → {after_head}')
     with t3: st.metric('Working changes', f'{event.working_changes_before} → {event.working_changes_after}')
     with t4: st.metric('Staged paths', f'{event.staged_before} → {event.staged_after}')
-    st.caption(f'Branch: {event.branch_before or 'Detached'} → {event.branch_after or 'Detached'}')
+    before_branch = event.branch_before or 'Detached'
+    after_branch = event.branch_after or 'Detached'
+    st.caption(f'Branch: {before_branch} → {after_branch}')
 else:
     st.caption('Run Git commands to build the semantic timeline.')
 
