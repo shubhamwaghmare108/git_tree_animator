@@ -13,6 +13,7 @@ from ui.quiz import get_quizzes, run_quiz_scenario
 from ui.command_challenges import get_command_challenges, check_command
 from ui.missions import get_missions, command_matches, mission_status
 from ui.recovery import get_recovery_labs, capture_recovery_target, recovery_status
+from ui.animation_timeline import build_timeline
 
 
 # Page configuration
@@ -157,6 +158,33 @@ with col_graph:
     else:
         fig = render_git_graph(st.session_state.repo.state)
     st.plotly_chart(fig, use_container_width=True, key="git_graph")
+
+# ============================================================================
+# SEMANTIC ANIMATION TIMELINE
+# ============================================================================
+
+st.markdown('---')
+st.markdown('### 🎬 Semantic Animation Timeline')
+st.caption('Each Git command is translated into a learner-friendly state transition, so the animation explains what changed rather than only moving nodes.')
+timeline = build_timeline(st.session_state.repo.history)
+if timeline:
+    timeline_step = st.slider('Timeline step', 1, len(timeline), len(timeline), key='timeline_step')
+    event = timeline[timeline_step - 1]
+    st.code(f'Step {event.step}: {event.command}')
+    st.info(event.summary)
+    t1, t2, t3, t4 = st.columns(4)
+    with t1: st.metric('Commits', f'{event.commits_before} → {event.commits_after}')
+    with t2:
+        before_head = (event.head_before or 'None')[:7]
+        after_head = (event.head_after or 'None')[:7]
+        st.metric('HEAD', f'{before_head} → {after_head}')
+    with t3: st.metric('Working changes', f'{event.working_changes_before} → {event.working_changes_after}')
+    with t4: st.metric('Staged paths', f'{event.staged_before} → {event.staged_after}')
+    before_branch = event.branch_before or 'Detached'
+    after_branch = event.branch_after or 'Detached'
+    st.caption(f'Branch: {before_branch} → {after_branch}')
+else:
+    st.caption('Run Git commands to build the semantic timeline.')
 
 with col_state:
     st.markdown("### 📋 Repository State")
