@@ -252,7 +252,7 @@ This tool teaches:
 - [x] Merge conflicts
 - [x] Stash
 - [x] Tags
-- [ ] Interactive quizzes
+- [x] Interactive quizzes
 - [ ] Real Git repository mode (libgit2)
 
 ## Architecture Decisions
@@ -477,3 +477,13 @@ git tag -d v1.0
 The graph displays tags directly beside their target commits. Annotated tags are
 distinguished from lightweight tags, and tag names can be used anywhere the
 simulator resolves a commit reference.
+
+
+## Interactive Git challenges
+
+The app includes prediction-based quizzes at Beginner, Intermediate, and
+Advanced levels. Each challenge gives a command scenario, asks the learner to
+predict the resulting Git state, then explains the expected result.
+
+The quiz score is tracked during the current Streamlit session so learners can
+repeat scenarios and build confidence before using the terminal.
