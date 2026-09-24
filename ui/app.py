@@ -207,6 +207,52 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# CHERRY-PICK WORKFLOW
+# ============================================================================
+
+if st.session_state.repo.state.cherry_pick_in_progress:
+    st.markdown("---")
+    st.markdown("### 🍒 Cherry-pick in Progress")
+    cp_state = st.session_state.repo.state
+    target = cp_state.cherry_pick_commit_sha
+    if target and target in cp_state.commits:
+        st.info(
+            f"Applying **{target[:7]}** — {cp_state.commits[target].message}. "
+            "Resolve conflicts, stage the result, then continue."
+        )
+
+    for conflict_file in sorted(cp_state.conflict_files):
+        conflict_content = (
+            cp_state.working_tree.modified_files.get(conflict_file, "")
+            or cp_state.working_tree.new_files.get(conflict_file, "")
+        )
+        resolved = st.text_area(
+            f"Resolve cherry-pick conflict: {conflict_file}",
+            value=conflict_content,
+            height=180,
+            key=f"cherry_conflict_editor_{conflict_file}",
+        )
+        if st.button(
+            f"💾 Save cherry-pick resolution: {conflict_file}",
+            key=f"save_cherry_conflict_{conflict_file}",
+        ):
+            st.session_state.repo.set_working_file(conflict_file, resolved)
+            st.success(f"Saved resolution for {conflict_file}. Run git add . next.")
+            st.rerun()
+
+    abort_col, continue_col = st.columns(2)
+    with abort_col:
+        if st.button("↩️ Abort cherry-pick", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git cherry-pick --abort")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+    with continue_col:
+        if st.button("🍒 Continue cherry-pick", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git cherry-pick --continue")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+
+# ============================================================================
 # REBASE WORKFLOW
 # ============================================================================
 
@@ -437,6 +483,10 @@ def _get_command_explanation(command: str) -> str:
         "git checkout": "**git checkout** is a legacy command that does the same thing as git switch.",
         
         "git merge": "**git merge** combines commits from another branch into the current branch. If the target branch contains commits not in the current branch, a merge commit is created.",
+        
+        "git rebase": "**git rebase** replays your branch commits on top of another base, creating new commit identities.",
+        
+        "git cherry-pick": "**git cherry-pick** applies the changes introduced by an existing commit as a new commit on the current branch.",
         
         "git reset": "**git reset** moves the current branch pointer to a different commit. Different modes affect the staging area and working directory differently.",
         

@@ -153,6 +153,10 @@ class GitCommandExecutor:
         # Get current branch
         if state.merge_in_progress:
             raise GitCommandError("You are in the middle of a merge. Resolve conflicts and use 'git merge --continue'.")
+        if state.rebase_in_progress:
+            raise GitCommandError("You are in the middle of a rebase. Resolve conflicts and use 'git rebase --continue'.")
+        if state.cherry_pick_in_progress:
+            raise GitCommandError("You are in the middle of a cherry-pick. Resolve conflicts and use 'git cherry-pick --continue'.")
         if state.head_is_detached:
             raise GitCommandError(
                 f"Not currently on any branch.\n"
@@ -507,6 +511,117 @@ class GitCommandExecutor:
         
         return new_state, f"HEAD is now at {target_sha[:7]} {target_commit.message}"
     
+    # ========== Cherry-pick Commands ==========
+
+    def cmd_cherry_pick(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git cherry-pick <commit>, --continue, or --abort."""
+        if args and args[0] == "--abort":
+            return self.cmd_cherry_pick_abort([], state)
+        if args and args[0] == "--continue":
+            return self.cmd_cherry_pick_continue([], state)
+        if not args or len(args) != 1:
+            raise GitCommandError("Usage: git cherry-pick <commit>")
+        if state.merge_in_progress or state.rebase_in_progress or state.cherry_pick_in_progress:
+            raise GitCommandError("Another Git operation is already in progress")
+        if state.head_is_detached:
+            raise GitCommandError("Cannot cherry-pick: HEAD is detached")
+        if state.index.staged_files or state.index.staged_content or state.index.staged_deletions or state.working_tree.has_changes():
+            raise GitCommandError("Cannot cherry-pick: working tree or index has changes")
+
+        current_sha = state.get_head_commit_sha()
+        target_sha = self._resolve_ref(args[0], state)
+        if not current_sha or not target_sha:
+            raise GitCommandError(f"fatal: bad revision '{args[0]}'")
+
+        target = state.commits[target_sha]
+        if len(target.parents) != 1:
+            raise GitCommandError("Cherry-picking merge commits is not supported by this educational simulator")
+
+        parent_tree = state.commits[target.parents[0]].tree
+        current_tree = state.commits[current_sha].tree
+        result_tree, conflicts = self._apply_commit_patch(parent_tree, target.tree, current_tree)
+        new_state = state.copy()
+
+        if conflicts:
+            new_state.cherry_pick_in_progress = True
+            new_state.cherry_pick_commit_sha = target_sha
+            new_state.conflict_files = set(conflicts)
+            modified_files = {k: v for k, v in result_tree.items() if k in current_tree and current_tree[k] != v}
+            new_files = {k: v for k, v in result_tree.items() if k not in current_tree}
+            deleted_files = set(current_tree) - set(result_tree)
+            new_state.working_tree = WorkingTreeState(
+                modified_files=modified_files,
+                new_files=new_files,
+                deleted_files=deleted_files,
+            )
+            return new_state, (
+                f"Cherry-pick paused at {target_sha[:7]} ({target.message}). "
+                "Resolve conflicts, run 'git add .', then 'git cherry-pick --continue'."
+            )
+
+        return self._finish_cherry_pick(new_state, target_sha, result_tree)
+
+    def cmd_cherry_pick_continue(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git cherry-pick --continue after resolving conflicts."""
+        if not state.cherry_pick_in_progress or not state.cherry_pick_commit_sha:
+            raise GitCommandError("There is no cherry-pick to continue")
+        if state.conflict_files:
+            raise GitCommandError("Cherry-pick conflicts remain: " + ", ".join(sorted(state.conflict_files)))
+        if not state.index.staged_files and not state.index.staged_deletions:
+            raise GitCommandError("Stage the resolved files before continuing the cherry-pick")
+
+        target_sha = state.cherry_pick_commit_sha
+        target = state.commits.get(target_sha)
+        current_sha = state.get_head_commit_sha()
+        if not target or not current_sha:
+            raise GitCommandError("Cannot continue cherry-pick: missing commit state")
+
+        tree = dict(state.commits[current_sha].tree)
+        for filename, content in state.index.staged_content.items():
+            tree[filename] = content
+        for filename in state.index.staged_deletions:
+            tree.pop(filename, None)
+        return self._finish_cherry_pick(state.copy(), target_sha, tree)
+
+    def cmd_cherry_pick_abort(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git cherry-pick --abort - cancel an in-progress cherry-pick."""
+        if not state.cherry_pick_in_progress:
+            raise GitCommandError("There is no cherry-pick to abort")
+        new_state = state.copy()
+        new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
+        new_state.working_tree = WorkingTreeState()
+        new_state.conflict_files.clear()
+        new_state.cherry_pick_in_progress = False
+        new_state.cherry_pick_commit_sha = None
+        return new_state, "Cherry-pick aborted; branch restored to its pre-cherry-pick state"
+
+    def _finish_cherry_pick(self, state: GitState, target_sha: str, tree: dict) -> Tuple[GitState, str]:
+        target = state.commits[target_sha]
+        current_sha = state.get_head_commit_sha()
+        if not current_sha:
+            raise GitCommandError("Cannot finish cherry-pick without HEAD")
+        new_sha = self._generate_sha(f"cherry-pick: {target.message}", current_sha)
+        state.commits[new_sha] = Commit(
+            sha=new_sha,
+            message=target.message,
+            parents=[current_sha],
+            author=target.author,
+            timestamp=int(datetime.now().timestamp()),
+            tree=dict(tree),
+        )
+        state.branches[state.head] = BranchPointer(state.head, new_sha)
+        state.index.staged_files.clear()
+        state.index.staged_content.clear()
+        state.index.staged_deletions.clear()
+        state.working_tree = WorkingTreeState()
+        state.conflict_files.clear()
+        state.cherry_pick_in_progress = False
+        state.cherry_pick_commit_sha = None
+        state.reflog.append(ReflogEntry(ref="HEAD", action="cherry-pick", sha=new_sha, message=f"cherry-pick {target_sha[:7]}"))
+        return state, f"Cherry-pick created commit {new_sha[:7]} from {target_sha[:7]}"
+
     # ========== Rebase Commands ==========
 
     def cmd_rebase(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
