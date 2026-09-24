@@ -96,6 +96,7 @@ class GitCommandExecutor:
         
         for filename, content in new_state.working_tree.new_files.items():
             new_state.index.staged_files[filename] = self._hash_content(content)
+            new_state.index.staged_content[filename] = content
         
         staged_count = len(new_state.index.staged_files)
         
