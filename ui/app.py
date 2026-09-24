@@ -588,6 +588,8 @@ if missions:
     if st.session_state.mission_step == 0 and not st.session_state.mission_repo.history:
         for setup_command in mission["setup"]:
             st.session_state.mission_repo.execute_command(setup_command)
+        for filename, content in mission.get("setup_files", {}).items():
+            st.session_state.mission_repo.set_working_file(filename, content)
     step_index = min(st.session_state.mission_step, len(mission["steps"]) - 1)
     step = mission["steps"][step_index]
     st.markdown(f"**{mission['level']} · {mission['title']}**")
@@ -603,6 +605,9 @@ if missions:
                 st.session_state.mission_score += 1
                 st.success("✅ Checkpoint complete!")
                 st.write(output)
+                status = mission_status(mission, st.session_state.mission_repo, st.session_state.mission_step)
+                if status["complete"]:
+                    st.success("🏁 Mission objective validated from the actual repository state.")
                 st.rerun()
             else:
                 st.error(output)

@@ -1055,3 +1055,34 @@ def test_sandbox_file_edit_and_delete_update_working_tree():
 
     repo.delete_working_file("app.py")
     assert "app.py" in repo.state.working_tree.deleted_files
+
+
+def test_mission_validation_uses_final_repository_state():
+    from ui.missions import MISSIONS, validate_mission
+    from git_simulator.repository import GitRepository
+
+    feature = next(m for m in MISSIONS if m["id"] == "feature-release")
+    repo = GitRepository()
+    for command in feature["setup"]:
+        repo.execute_command(command)
+    repo.execute_command("git switch -c feature")
+    repo.execute_command("git commit -m 'Feature work'")
+    repo.execute_command("git switch main")
+    repo.execute_command("git tag v1.0")
+
+    assert validate_mission(feature, repo)
+
+
+def test_safe_work_mission_uses_simulated_file_state():
+    from ui.missions import MISSIONS, validate_mission
+    from git_simulator.repository import GitRepository
+
+    mission = next(m for m in MISSIONS if m["id"] == "safe-work")
+    repo = GitRepository()
+    for command in mission["setup"]:
+        repo.execute_command(command)
+    repo.set_working_file("notes.txt", "unfinished work")
+    repo.execute_command("git stash")
+    repo.execute_command("git stash apply")
+
+    assert validate_mission(mission, repo)
