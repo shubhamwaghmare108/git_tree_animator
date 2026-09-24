@@ -8,7 +8,7 @@ A fully functional, educational Git repository simulator with interactive web vi
 
 **800+ lines of core Git simulator code**
 - Pure Python implementation
-- 50+ passing unit tests
+- 80+ unit tests
 - All major Git commands for Phase 1
 - snapshot-based state management
 - History replay capability
@@ -25,7 +25,7 @@ A fully functional, educational Git repository simulator with interactive web vi
 - QUICKSTART (5-minute setup)
 - ARCHITECTURE (design decisions)
 - Inline code comments
-- 50+ unit tests as examples
+- 80+ unit tests as examples
 
 ---
 
@@ -50,7 +50,7 @@ git-tree-animator/
 ├── tests/                        # Test suite
 │   ├── __init__.py
 │   ├── conftest.py              # Pytest fixtures
-│   └── test_git_commands.py      # 50+ unit tests (400 lines)
+│   └── test_git_commands.py      # 80+ unit tests (400 lines)
 │
 ├── requirements.txt              # Python dependencies
 ├── run.py                        # Entry point
@@ -62,7 +62,7 @@ git-tree-animator/
 ├── ARCHITECTURE.md               # Design documentation
 └── PROJECT_SUMMARY.md            # This file
 
-Total: ~2,500 lines of code + documentation
+Total: evolving codebase with simulator, UI modes, tests, and documentation
 ```
 
 ---
@@ -154,7 +154,7 @@ Learn what Git actually does:
 
 ### 5. Comprehensive Tests
 
-50+ unit tests covering:
+80+ unit tests covering:
 - ✅ Every implemented command
 - ✅ State transitions
 - ✅ Error handling
@@ -405,29 +405,19 @@ def test_revert():
 
 3. **It automatically works in the UI!**
 
-### Phase 2 Plans
+### Current Engineering Priorities
 
-- [ ] `git revert` - Create inverse commit
-- [ ] `git rebase` - Reorder commits with animation
-- [ ] `git cherry-pick` - Copy commits
-- [ ] Detached HEAD state
-- [ ] Tag support
+- [x] Semantic animation timeline and historical state scrubbing
+- [x] Mistake recovery and state-based missions
+- [x] Rebase and cherry-pick workflows
+- [x] Stash, tags, remotes, and detached HEAD simulation
+- [x] Git sandbox file editing
+- [x] Git state semantic hardening
+- [x] Automated CI test matrix
+- [ ] Richer DAG layout for large/complex histories
+- [ ] Further UI modularization
+- [ ] Optional real repository inspection mode
 
-### Phase 3 Plans
-
-- [ ] Remote repository simulation
-- [ ] `git push` / `git pull` / `git fetch`
-- [ ] Remote-tracking branches
-- [ ] Stash operations
-
-### Phase 4 Plans
-
-- [ ] Real `.git` repository mode
-- [ ] Merge conflict visualization
-- [ ] Interactive quizzes
-- [ ] Export as image/GIF
-
----
 
 ## Documentation
 
@@ -559,7 +549,7 @@ MIT - Feel free to use, modify, extend!
 
 ## Summary
 
-You now have a **production-quality Git simulator** that:
+You now have a **educational Git simulator with an expanding semantic test suite** that:
 
 ✅ Simulates Git commands accurately  
 ✅ Visualizes state transitions  
