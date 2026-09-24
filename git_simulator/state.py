@@ -163,9 +163,6 @@ class GitState:
     rebase_current_commit: Optional[str] = None
     cherry_pick_in_progress: bool = False
     cherry_pick_commit_sha: Optional[str] = None
-    # Snapshot of local changes before an operation that can be aborted.
-    operation_original_index: Optional[IndexState] = None
-    operation_original_working_tree: Optional[WorkingTreeState] = None
     
     def copy(self) -> "GitState":
         """Create a deep copy of state."""
@@ -201,8 +198,6 @@ class GitState:
             rebase_current_commit=self.rebase_current_commit,
             cherry_pick_in_progress=self.cherry_pick_in_progress,
             cherry_pick_commit_sha=self.cherry_pick_commit_sha,
-            operation_original_index=deepcopy(self.operation_original_index),
-            operation_original_working_tree=deepcopy(self.operation_original_working_tree),
         )
     
     def get_head_commit_sha(self) -> Optional[str]:
