@@ -10,6 +10,7 @@ from git_simulator.state import WorkingTreeState
 from ui.graph_renderer import render_git_graph, render_git_animation
 from ui.file_display import render_staging_area, render_working_tree, render_repository_state, render_commit_details
 from ui.quiz import get_quizzes, run_quiz_scenario
+from ui.command_challenges import get_command_challenges, check_command
 
 
 # Page configuration
@@ -520,6 +521,51 @@ if quizzes:
         st.session_state.pop("quiz_last_repo", None)
         st.session_state.pop("quiz_last_results", None)
         st.rerun()
+
+# ============================================================================
+# GOAL-ORIENTED COMMAND CHALLENGE
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🎯 Git Command Challenge")
+st.caption("You are given a repository state and a goal. Enter the Git command that achieves it.")
+
+challenge_level = st.selectbox("Command challenge level", ["All", "Beginner", "Intermediate", "Advanced"], key="command_challenge_level")
+challenges = get_command_challenges(challenge_level)
+if "command_challenge_attempts" not in st.session_state: st.session_state.command_challenge_attempts = 0
+if "command_challenge_score" not in st.session_state: st.session_state.command_challenge_score = 0
+
+if challenges:
+    challenge = challenges[st.session_state.command_challenge_attempts % len(challenges)]
+    st.markdown(f"**{challenge['level']} · {challenge['title']}**")
+    st.write("**Starting scenario:**")
+    for step in challenge["setup"]: st.code(step)
+    st.info(f"**Your goal:** {challenge['goal']}")
+    submitted_command = st.text_input("Your Git command", placeholder="git ...", key=f"challenge_input_{st.session_state.command_challenge_attempts}_{challenge['id']}")
+    if st.button("▶ Execute challenge", key=f"challenge_run_{st.session_state.command_challenge_attempts}_{challenge['id']}"):
+        if not submitted_command.strip():
+            st.warning("Enter a Git command first.")
+        else:
+            correct, challenge_repo, challenge_output = check_command(challenge, submitted_command)
+            if correct:
+                st.session_state.command_challenge_score += 1
+                st.success("✅ Goal achieved!")
+            else:
+                st.error("❌ That command did not match the expected solution or did not execute successfully.")
+            st.write(f"**Simulator output:** {challenge_output}")
+            st.write(f"**Expected command:** `{challenge['accepted'][0]}`")
+            st.info(f"**Why:** {challenge['explanation']}")
+            st.markdown("**Resulting state:**")
+            st.write(f"HEAD: `{challenge_repo.state.get_head_commit_sha() or 'none'}`")
+            st.plotly_chart(render_git_graph(challenge_repo.state), use_container_width=True)
+
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Challenge score", st.session_state.command_challenge_score)
+    with c2: st.metric("Attempts", st.session_state.command_challenge_attempts)
+    with c3:
+        if st.button("Next command challenge", key="next_command_challenge"):
+            st.session_state.command_challenge_attempts += 1
+            st.rerun()
 
 # ============================================================================
 # COMMAND INPUT & EXECUTION
