@@ -602,7 +602,8 @@ class TestMergeConflictWorkflow:
         assert not state.working_tree.has_changes()
 
 
-def test_rebase_replays_commits_with_new_parents(repo):
+def test_rebase_replays_commits_with_new_parents():
+    repo = GitRepository()
     repo.execute_command("git init")
     repo.set_working_file("app.py", "base")
     repo.execute_command("git add .")
@@ -629,7 +630,8 @@ def test_rebase_replays_commits_with_new_parents(repo):
     assert rebased.tree["readme.md"] == "main"
 
 
-def test_rebase_conflict_can_continue(repo):
+def test_rebase_conflict_can_continue():
+    repo = GitRepository()
     repo.execute_command("git init")
     repo.set_working_file("app.py", "base")
     repo.execute_command("git add .")
@@ -662,7 +664,8 @@ def test_rebase_conflict_can_continue(repo):
     assert tip.parents == [state.commits[state.branches["main"].target_sha].sha]
 
 
-def test_rebase_abort_restores_original_tip(repo):
+def test_rebase_abort_restores_original_tip():
+    repo = GitRepository()
     repo.execute_command("git init")
     repo.set_working_file("app.py", "base")
     repo.execute_command("git add .")
