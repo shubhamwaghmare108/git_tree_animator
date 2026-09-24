@@ -1432,3 +1432,26 @@ def test_merge_rejects_local_changes_before_starting_operation():
     assert "local changes" in message
     assert not state.merge_in_progress
     assert state.working_tree.new_files["local.txt"] == "local"
+
+
+def test_commit_rejects_empty_commit_without_allow_empty():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    success, message, state = repo.execute_command('git commit -m "empty"')
+
+    assert not success
+    assert "nothing to commit" in message
+    assert not state.commits
+    assert state.branches["main"].target_sha is None
+
+
+def test_commit_allows_explicit_empty_commit():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    success, message, state = repo.execute_command('git commit --allow-empty -m "marker"')
+
+    assert success, message
+    assert len(state.commits) == 1
+    assert state.branches["main"].target_sha is not None
+    sha = state.branches["main"].target_sha
+    assert state.commits[sha].tree == {}
