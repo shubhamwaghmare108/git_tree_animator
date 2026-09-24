@@ -1338,3 +1338,23 @@ def test_status_does_not_report_clean_with_only_staged_deletion():
     assert "Changes to be committed:" in status
     assert "deleted:    app.py" in status
     assert "nothing to commit, working tree clean" not in status
+
+
+def test_stash_apply_rejects_overlapping_local_changes():
+    repo = GitRepository()
+    repo.execute_command("git init")
+    repo.set_working_file("app.py", "v1")
+    repo.execute_command("git add .")
+    repo.execute_command('git commit -m "initial"')
+
+    repo.set_working_file("app.py", "stashed")
+    success, _, _ = repo.execute_command("git stash")
+    assert success
+
+    repo.set_working_file("app.py", "local")
+    success, message, state = repo.execute_command("git stash apply")
+
+    assert not success
+    assert "local changes would be overwritten" in message
+    assert state.working_tree.modified_files["app.py"] == "local"
+    assert len(state.stashes) == 1
