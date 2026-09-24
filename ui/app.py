@@ -207,6 +207,33 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# STASH WORKFLOW
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 📦 Stash")
+stash_state = st.session_state.repo.state
+if stash_state.stashes:
+    st.code("\n".join(f"{s.name}: {s.message}" for s in stash_state.stashes))
+    stash_col1, stash_col2, stash_col3 = st.columns(3)
+    with stash_col1:
+        if st.button("📋 List stashes", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git stash list")
+            st.info(message or "No stash entries.")
+    with stash_col2:
+        if st.button("📥 Apply latest", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git stash apply")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+    with stash_col3:
+        if st.button("📤 Pop latest", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git stash pop")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+else:
+    st.caption("No stashes. Edit a simulated file, then run git stash to save it for later.")
+
+# ============================================================================
 # REMOTE SYNCHRONIZATION
 # ============================================================================
 
@@ -569,6 +596,7 @@ def _get_command_explanation(command: str) -> str:
         "git push": "**git push** sends the current local branch pointer to the simulated remote. The remote branch moves, while your local branch remains where it was.",
         "git fetch": "**git fetch** refreshes local remote-tracking references without changing your current branch.",
         "git pull": "**git pull** fetches the remote and then fast-forwards the current branch when the histories are compatible.",
+        "git stash": "**git stash** saves working-tree and staged changes away so you can return to a clean working tree. Apply or pop the stash later to restore the work.",
     }
     
     for cmd_pattern, explanation in explanations.items():
