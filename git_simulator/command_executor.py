@@ -93,8 +93,22 @@ class GitCommandExecutor:
         new_state.index.staged_files.clear()
         new_state.index.staged_content.clear()
         new_state.index.staged_deletions.clear()
+        self._renumber_stashes(new_state)
         new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=state.get_head_commit_sha() or "", message=message))
         return new_state, f"Saved working directory and index state as {new_state.stashes[0].name}"
+
+    def _renumber_stashes(self, state: GitState) -> None:
+        for index, stash in enumerate(state.stashes):
+            state.stashes[index] = StashEntry(
+                stash_id=index,
+                message=stash.message,
+                base_sha=stash.base_sha,
+                modified_files=dict(stash.modified_files),
+                new_files=dict(stash.new_files),
+                deleted_files=set(stash.deleted_files),
+                staged_content=dict(stash.staged_content),
+                staged_deletions=set(stash.staged_deletions),
+            )
 
     def _format_stash_list(self, state: GitState) -> str:
         if not state.stashes:
@@ -144,6 +158,7 @@ class GitCommandExecutor:
         stash = self._get_stash(args, state)
         new_state = self._apply_stash(stash, state)
         new_state.stashes.pop(stash.stash_id)
+        self._renumber_stashes(new_state)
         new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=stash.base_sha or "", message=f"pop {stash.name}"))
         return new_state, f"Applied and dropped {stash.name}"
 
@@ -151,6 +166,7 @@ class GitCommandExecutor:
         stash = self._get_stash(args, state)
         new_state = state.copy()
         new_state.stashes.pop(stash.stash_id)
+        self._renumber_stashes(new_state)
         new_state.reflog.append(ReflogEntry(ref="HEAD", action="stash", sha=stash.base_sha or "", message=f"drop {stash.name}"))
         return new_state, f"Dropped {stash.name}"
 
