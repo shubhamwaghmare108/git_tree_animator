@@ -507,6 +507,232 @@ class GitCommandExecutor:
         
         return new_state, f"HEAD is now at {target_sha[:7]} {target_commit.message}"
     
+    # ========== Rebase Commands ==========
+
+    def cmd_rebase(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git rebase <branch>, --continue, or --abort.
+
+        Rebase replays the current branch's unique commits on top of the
+        target branch. Original commits are retained so the visualization can
+        show the old and newly-created history side by side.
+        """
+        if args and args[0] == "--abort":
+            return self.cmd_rebase_abort([], state)
+        if args and args[0] == "--continue":
+            return self.cmd_rebase_continue([], state)
+        if not args:
+            raise GitCommandError("Usage: git rebase <branch>")
+        if state.merge_in_progress:
+            raise GitCommandError("Cannot rebase while a merge is in progress")
+        if state.rebase_in_progress:
+            raise GitCommandError("A rebase is already in progress")
+        if state.head_is_detached:
+            raise GitCommandError("Cannot rebase: HEAD is detached")
+        if state.index.staged_files or state.index.staged_content or state.index.staged_deletions or state.working_tree.has_changes():
+            raise GitCommandError("Cannot rebase: working tree or index has changes")
+
+        onto_ref = args[0]
+        if onto_ref not in state.branches:
+            raise GitCommandError(f"error: branch '{onto_ref}' not found")
+
+        current_sha = state.get_head_commit_sha()
+        onto_sha = state.branches[onto_ref].target_sha
+        if not current_sha or not onto_sha:
+            raise GitCommandError("Cannot rebase: missing commits")
+        if current_sha == onto_sha:
+            return state, "Current branch is already up to date."
+        if self._is_ancestor(current_sha, onto_sha, state.commits):
+            new_state = state.copy()
+            new_state.branches[new_state.head] = BranchPointer(new_state.head, onto_sha)
+            new_state.reflog.append(ReflogEntry(ref="HEAD", action="rebase", sha=onto_sha, message=f"rebase onto {onto_ref}"))
+            return new_state, "Fast-forwarded branch during rebase."
+
+        base_sha = self._find_merge_base(current_sha, onto_sha, state.commits)
+        if base_sha is None:
+            raise GitCommandError("Cannot rebase: branches have no common ancestor")
+
+        pending = self._collect_first_parent_commits(current_sha, base_sha, state.commits)
+        new_state = state.copy()
+        new_state.rebase_in_progress = True
+        new_state.rebase_original_head = current_sha
+        new_state.rebase_onto_sha = onto_sha
+        new_state.rebase_pending_commits = pending
+        new_state.rebase_current_commit = None
+        new_state.branches[new_state.head] = BranchPointer(new_state.head, onto_sha)
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="rebase", sha=onto_sha, message=f"rebase {new_state.head} onto {onto_ref}"))
+
+        return self._replay_rebase_commits(new_state)
+
+    def cmd_rebase_continue(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git rebase --continue after resolving and staging conflicts."""
+        if not state.rebase_in_progress or not state.rebase_current_commit:
+            raise GitCommandError("There is no rebase to continue")
+        if state.conflict_files:
+            raise GitCommandError("Rebase conflicts remain: " + ", ".join(sorted(state.conflict_files)))
+        if not state.index.staged_files and not state.index.staged_deletions:
+            raise GitCommandError("Stage the resolved files before continuing the rebase")
+
+        new_state = state.copy()
+        original_sha = new_state.rebase_current_commit
+        original = new_state.commits.get(original_sha)
+        parent_sha = new_state.get_head_commit_sha()
+        if not original or not parent_sha:
+            raise GitCommandError("Cannot continue rebase: missing replay state")
+
+        tree = dict(new_state.commits[parent_sha].tree)
+        for filename, content in new_state.index.staged_content.items():
+            tree[filename] = content
+        for filename in new_state.index.staged_deletions:
+            tree.pop(filename, None)
+
+        replay_sha = self._generate_sha(f"rebase: {original.message}", parent_sha)
+        new_state.commits[replay_sha] = Commit(
+            sha=replay_sha,
+            message=original.message,
+            parents=[parent_sha],
+            author=original.author,
+            timestamp=int(datetime.now().timestamp()),
+            tree=tree,
+        )
+        new_state.branches[new_state.head] = BranchPointer(new_state.head, replay_sha)
+        new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
+        new_state.working_tree = WorkingTreeState()
+        new_state.conflict_files.clear()
+        new_state.rebase_current_commit = None
+        if new_state.rebase_pending_commits and new_state.rebase_pending_commits[0] == original_sha:
+            new_state.rebase_pending_commits.pop(0)
+        return self._replay_rebase_commits(new_state)
+
+    def cmd_rebase_abort(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git rebase --abort - restore the branch to its pre-rebase tip."""
+        if not state.rebase_in_progress or not state.rebase_original_head:
+            raise GitCommandError("There is no rebase to abort")
+        new_state = state.copy()
+        new_state.branches[new_state.head] = BranchPointer(new_state.head, new_state.rebase_original_head)
+        new_state.index.staged_files.clear()
+        new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
+        new_state.working_tree = WorkingTreeState()
+        new_state.conflict_files.clear()
+        new_state.rebase_in_progress = False
+        new_state.rebase_original_head = None
+        new_state.rebase_onto_sha = None
+        new_state.rebase_pending_commits.clear()
+        new_state.rebase_current_commit = None
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="rebase-abort", sha=new_state.branches[new_state.head].target_sha or "", message="rebase --abort"))
+        return new_state, "Rebase aborted; branch restored to its original tip"
+
+    def _replay_rebase_commits(self, state: GitState) -> Tuple[GitState, str]:
+        """Replay pending commits until completion or the first conflict."""
+        new_state = state.copy()
+        replayed = []
+        while new_state.rebase_pending_commits:
+            original_sha = new_state.rebase_pending_commits[0]
+            original = new_state.commits[original_sha]
+            original_parent = original.parents[0] if original.parents else None
+            current_sha = new_state.get_head_commit_sha()
+            if not current_sha:
+                raise GitCommandError("Cannot replay commit without a current base")
+
+            if original_parent is None:
+                base_tree = {}
+            else:
+                base_tree = new_state.commits[original_parent].tree
+            # Compare the original commit against its original parent and apply
+            # that patch to the newly-rebased parent.
+            merged_tree, conflicts = self._apply_commit_patch(
+                base_tree, original.tree, new_state.commits[current_sha].tree
+            )
+            if conflicts:
+                new_state.rebase_current_commit = original_sha
+                new_state.conflict_files = set(conflicts)
+                current_tree = new_state.commits[current_sha].tree
+                new_files = {
+                    k: v for k, v in merged_tree.items()
+                    if k not in current_tree
+                }
+                modified_files = {
+                    k: v for k, v in merged_tree.items()
+                    if k in current_tree and current_tree[k] != v
+                }
+                deleted_files = set(current_tree) - set(merged_tree)
+                new_state.working_tree = WorkingTreeState(
+                    modified_files=modified_files,
+                    new_files=new_files,
+                    deleted_files=deleted_files,
+                )
+                return new_state, (
+                    f"Rebase paused at {original_sha[:7]} ({original.message}). "
+                    "Resolve conflicts, run 'git add .', then 'git rebase --continue'."
+                )
+
+            replay_sha = self._generate_sha(f"rebase: {original.message}", current_sha)
+            new_state.commits[replay_sha] = Commit(
+                sha=replay_sha,
+                message=original.message,
+                parents=[current_sha],
+                author=original.author,
+                timestamp=int(datetime.now().timestamp()),
+                tree=merged_tree,
+            )
+            new_state.branches[new_state.head] = BranchPointer(new_state.head, replay_sha)
+            new_state.rebase_pending_commits.pop(0)
+            replayed.append(f"{original_sha[:7]} -> {replay_sha[:7]}")
+
+        new_state.rebase_in_progress = False
+        new_state.rebase_original_head = None
+        new_state.rebase_onto_sha = None
+        new_state.rebase_current_commit = None
+        new_state.conflict_files.clear()
+        new_state.reflog.append(ReflogEntry(ref="HEAD", action="rebase", sha=new_state.get_head_commit_sha() or "", message="rebase finished"))
+        detail = ", ".join(replayed) if replayed else "no commits to replay"
+        return new_state, f"Rebase finished: {detail}"
+
+    def _collect_first_parent_commits(self, tip_sha: str, base_sha: str, commits: dict) -> List[str]:
+        """Return first-parent commits from base-exclusive to tip, oldest first."""
+        result = []
+        current = tip_sha
+        while current and current != base_sha:
+            result.append(current)
+            commit = commits.get(current)
+            if not commit or not commit.parents:
+                break
+            current = commit.parents[0]
+        if current != base_sha:
+            raise GitCommandError("Cannot determine linear rebase sequence")
+        result.reverse()
+        return result
+
+    def _apply_commit_patch(self, base_tree: dict, original_tree: dict, new_base_tree: dict) -> Tuple[dict, List[str]]:
+        """Apply one commit's tree delta to a new base using three-way rules."""
+        missing = object()
+        result = dict(new_base_tree)
+        conflicts = []
+        for filename in set(base_tree) | set(original_tree) | set(new_base_tree):
+            base_value = base_tree.get(filename, missing)
+            original_value = original_tree.get(filename, missing)
+            current_value = new_base_tree.get(filename, missing)
+            if original_value == base_value:
+                merged = current_value
+            elif current_value == base_value or current_value == original_value:
+                merged = original_value
+            else:
+                current_text = "" if current_value is missing else current_value
+                original_text = "" if original_value is missing else original_value
+                merged = (
+                    "<<<<<<< rebased-base\\n" + current_text +
+                    "\\n=======\\n" + original_text +
+                    "\\n>>>>>>> replayed-commit"
+                )
+                conflicts.append(filename)
+            if merged is missing:
+                result.pop(filename, None)
+            else:
+                result[filename] = merged
+        return result, conflicts
+
     # ========== Merge Commands ==========
 
     def cmd_merge_abort(self, args: List[str], state: GitState) -> Tuple[GitState, str]:

@@ -207,6 +207,60 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# REBASE WORKFLOW
+# ============================================================================
+
+if st.session_state.repo.state.rebase_in_progress:
+    st.markdown("---")
+    st.markdown("### 🔄 Rebase in Progress")
+    rebase_state = st.session_state.repo.state
+    current = rebase_state.rebase_current_commit
+    pending = rebase_state.rebase_pending_commits
+    if current and current in rebase_state.commits:
+        st.info(
+            f"Replaying **{current[:7]}** — {rebase_state.commits[current].message}. "
+            f"Pending commits: {len(pending)}"
+        )
+    else:
+        st.info(f"Rebase is replaying commits. Pending: {len(pending)}")
+
+    if rebase_state.conflict_files:
+        st.warning(
+            "Resolve the conflicted files, save them, run git add ., "
+            "then continue the rebase."
+        )
+        for conflict_file in sorted(rebase_state.conflict_files):
+            conflict_content = (
+                rebase_state.working_tree.modified_files.get(conflict_file, "")
+                or rebase_state.working_tree.new_files.get(conflict_file, "")
+            )
+            resolved = st.text_area(
+                f"Resolve rebase conflict: {conflict_file}",
+                value=conflict_content,
+                height=180,
+                key=f"rebase_conflict_editor_{conflict_file}",
+            )
+            if st.button(
+                f"💾 Save rebase resolution: {conflict_file}",
+                key=f"save_rebase_conflict_{conflict_file}",
+            ):
+                st.session_state.repo.set_working_file(conflict_file, resolved)
+                st.success(f"Saved resolution for {conflict_file}. Run git add . next.")
+                st.rerun()
+
+    abort_col, continue_col = st.columns(2)
+    with abort_col:
+        if st.button("↩️ Abort rebase", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git rebase --abort")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+    with continue_col:
+        if st.button("▶️ Continue rebase", use_container_width=True):
+            success, message, _ = st.session_state.repo.execute_command("git rebase --continue")
+            st.error(message) if not success else st.success(message)
+            st.rerun()
+
+# ============================================================================
 # MERGE CONFLICT RESOLUTION
 # ============================================================================
 
