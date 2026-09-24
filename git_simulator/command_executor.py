@@ -118,6 +118,7 @@ class GitCommandExecutor:
             if filename in new_state.index.staged_files:
                 del new_state.index.staged_files[filename]
                 new_state.index.staged_content.pop(filename, None)
+                new_state.index.staged_deletions.discard(filename)
                 return new_state, f"Unstaged '{filename}'"
             else:
                 raise GitCommandError(f"pathspec '{filename}' did not match any files")
@@ -174,6 +175,8 @@ class GitCommandExecutor:
         commit_tree = dict(parent_tree)
         for filename, content in new_state.index.staged_content.items():
             commit_tree[filename] = content
+        for filename in new_state.index.staged_deletions:
+            commit_tree.pop(filename, None)
 
         # Create new commit
         new_sha = self._generate_sha(message, parent_sha)
@@ -203,6 +206,7 @@ class GitCommandExecutor:
             new_state.working_tree.deleted_files.discard(filename)
         new_state.index.staged_files.clear()
         new_state.index.staged_content.clear()
+        new_state.index.staged_deletions.clear()
         
         # Add reflog entry
         new_state.reflog.append(ReflogEntry(
@@ -482,11 +486,13 @@ class GitCommandExecutor:
             # Move changes to working tree
             new_state.index.staged_files.clear()
             new_state.index.staged_content.clear()
+            new_state.index.staged_deletions.clear()
         
         elif reset_mode == "--hard":
             # Discard all changes
             new_state.index.staged_files.clear()
             new_state.index.staged_content.clear()
+            new_state.index.staged_deletions.clear()
             new_state.working_tree = WorkingTreeState()
         
         # Add reflog entry
