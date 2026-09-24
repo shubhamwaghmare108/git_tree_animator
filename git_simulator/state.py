@@ -34,6 +34,19 @@ class Commit:
 
 
 @dataclass(frozen=True)
+class TagPointer:
+    """Immutable tag reference pointing at a commit."""
+
+    name: str
+    target_sha: str
+    message: Optional[str] = None
+    annotated: bool = False
+
+    def __str__(self) -> str:
+        return self.name
+
+
+@dataclass(frozen=True)
 class BranchPointer:
     """Immutable branch reference."""
     
@@ -121,6 +134,7 @@ class GitState:
     
     commits: Dict[str, Commit] = field(default_factory=dict)  # sha -> Commit
     branches: Dict[str, BranchPointer] = field(default_factory=dict)  # name -> BranchPointer
+    tags: Dict[str, TagPointer] = field(default_factory=dict)  # name -> TagPointer
     head: str = "main"                # Current branch name or detached commit SHA
     head_is_detached: bool = False    # True if HEAD points to commit directly
     
@@ -155,6 +169,7 @@ class GitState:
         return GitState(
             commits=deepcopy(self.commits),
             branches=deepcopy(self.branches),
+            tags=deepcopy(self.tags),
             head=self.head,
             head_is_detached=self.head_is_detached,
             index=IndexState(

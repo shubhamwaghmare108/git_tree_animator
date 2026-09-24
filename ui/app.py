@@ -207,6 +207,22 @@ if st.button("💾 Save working-tree change"):
         st.error("Enter a filename.")
 
 # ============================================================================
+# TAG WORKFLOW
+# ============================================================================
+
+st.markdown("---")
+st.markdown("### 🏷️ Tags")
+tag_state = st.session_state.repo.state
+if tag_state.tags:
+    for tag_name, tag_ptr in sorted(tag_state.tags.items()):
+        kind = "annotated" if tag_ptr.annotated else "lightweight"
+        st.caption(f"**{tag_name}** → {tag_ptr.target_sha[:7]} ({kind})")
+        if tag_ptr.message:
+            st.caption(f"  {tag_ptr.message}")
+else:
+    st.caption("No tags. Use `git tag v1.0` or `git tag -a v1.0 -m \"release\"`.")
+
+# ============================================================================
 # STASH WORKFLOW
 # ============================================================================
 
@@ -597,6 +613,7 @@ def _get_command_explanation(command: str) -> str:
         "git fetch": "**git fetch** refreshes local remote-tracking references without changing your current branch.",
         "git pull": "**git pull** fetches the remote and then fast-forwards the current branch when the histories are compatible.",
         "git stash": "**git stash** saves working-tree and staged changes away so you can return to a clean working tree. Apply or pop the stash later to restore the work.",
+        "git tag": "**git tag** creates a stable name for a commit. Lightweight tags are simple pointers; annotated tags also carry a message in this simulator.",
     }
     
     for cmd_pattern, explanation in explanations.items():

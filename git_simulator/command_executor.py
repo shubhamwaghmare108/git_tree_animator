@@ -8,7 +8,7 @@ import shlex
 from typing import List, Optional, Tuple
 from datetime import datetime
 
-from .state import GitState, Commit, BranchPointer, ReflogEntry, WorkingTreeState, StashEntry
+from .state import GitState, Commit, BranchPointer, TagPointer, ReflogEntry, WorkingTreeState, StashEntry
 from .errors import GitError, GitCommandError, GitRefNotFoundError
 
 
@@ -473,6 +473,55 @@ class GitCommandExecutor:
             message=f"fast-forward {branch_name} from {remote_name}/{branch_name}",
         ))
         return new_state, f"{fetch_msg}\nFast-forwarded {branch_name} to {target_sha[:7]}"
+
+    # ========== Tag Commands ==========
+
+    def cmd_tag(self, args: List[str], state: GitState) -> Tuple[GitState, str]:
+        """git tag - Create/list/delete lightweight or annotated tags."""
+        if not args:
+            return state, "\n".join(sorted(state.tags))
+        if args[0] == "-d":
+            if len(args) != 2:
+                raise GitCommandError("Usage: git tag -d <tag>")
+            name = args[1]
+            if name not in state.tags:
+                raise GitCommandError(f"error: tag '{name}' not found")
+            new_state = state.copy()
+            del new_state.tags[name]
+            return new_state, f"Deleted tag '{name}'"
+        if args[0] == "-a":
+            if len(args) < 2:
+                raise GitCommandError('Usage: git tag -a <tag> -m "message" [<commit>]')
+            name = args[1]
+            if name in state.tags:
+                raise GitCommandError(f"fatal: tag '{name}' already exists")
+            if "-m" not in args:
+                raise GitCommandError('Usage: git tag -a <tag> -m "message" [<commit>]')
+            m = args.index("-m")
+            if m + 1 >= len(args):
+                raise GitCommandError("Tag message cannot be empty")
+            message = " ".join(args[m + 1:]).strip('"').strip("'")
+            target_ref = args[m + 2] if len(args) > m + 2 else None
+            target_sha = self._resolve_ref(target_ref, state) if target_ref else state.get_head_commit_sha()
+            if not target_sha:
+                raise GitCommandError("fatal: no commit to tag")
+            new_state = state.copy()
+            new_state.tags[name] = TagPointer(name, target_sha, message, True)
+            new_state.reflog.append(ReflogEntry(ref=name, action="tag", sha=target_sha, message=f"tagged {target_sha[:7]}"))
+            return new_state, f"Created annotated tag '{name}' at {target_sha[:7]}"
+        name = args[0]
+        if name.startswith("-"):
+            raise GitCommandError('Usage: git tag [-a] <tag> [-m "message"] [<commit>]')
+        if name in state.tags:
+            raise GitCommandError(f"fatal: tag '{name}' already exists")
+        target_ref = args[1] if len(args) > 1 else None
+        target_sha = self._resolve_ref(target_ref, state) if target_ref else state.get_head_commit_sha()
+        if not target_sha:
+            raise GitCommandError("fatal: no commit to tag")
+        new_state = state.copy()
+        new_state.tags[name] = TagPointer(name, target_sha)
+        new_state.reflog.append(ReflogEntry(ref=name, action="tag", sha=target_sha, message=f"tagged {target_sha[:7]}"))
+        return new_state, f"Created tag '{name}' at {target_sha[:7]}"
 
     # ========== Branch Commands ==========
     
@@ -1390,7 +1439,11 @@ class GitCommandExecutor:
         # Handle branch names
         if ref in state.branches:
             return state.branches[ref].target_sha
-        
+
+        # Handle tag names
+        if ref in state.tags:
+            return state.tags[ref].target_sha
+
         # Handle commit SHAs
         if ref in state.commits:
             return ref
