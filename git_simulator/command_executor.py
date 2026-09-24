@@ -242,9 +242,21 @@ class GitCommandExecutor:
             # Unstage file
             filename = args[1] if len(args) > 1 else args[0]
             if filename in new_state.index.staged_files:
+                staged_content = new_state.index.staged_content.pop(filename, None)
                 del new_state.index.staged_files[filename]
-                new_state.index.staged_content.pop(filename, None)
                 new_state.index.staged_deletions.discard(filename)
+                head_tree = self._head_tree(state)
+                if staged_content is not None:
+                    if filename in head_tree:
+                        new_state.working_tree.modified_files[filename] = staged_content
+                    else:
+                        new_state.working_tree.new_files[filename] = staged_content
+                return new_state, f"Unstaged '{filename}'"
+            elif filename in new_state.index.staged_deletions:
+                new_state.index.staged_deletions.discard(filename)
+                head_tree = self._head_tree(state)
+                if filename in head_tree:
+                    new_state.working_tree.deleted_files.add(filename)
                 return new_state, f"Unstaged '{filename}'"
             else:
                 raise GitCommandError(f"pathspec '{filename}' did not match any files")
@@ -641,6 +653,9 @@ class GitCommandExecutor:
         else:
             branch_name = args[0]
         
+        if state.index.staged_files or state.index.staged_content or state.index.staged_deletions or state.working_tree.has_changes():
+            raise GitCommandError("Cannot switch branches with local changes; commit or stash them first")
+
         new_state = state.copy()
         
         if create_new:
